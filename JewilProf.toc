@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: JewilProf
+## Notes: Cheapest profession levelling plan using Auctionator prices.
+## Author: Jewil
+## Version: 0.1.0
+## Dependencies: Auctionator
+## SavedVariables: JewilProfDB
+## SavedVariablesPerCharacter: JewilProfCharDB
+
+Core.lua
+Data\Recipes.lua
+Data\VendorSeed.lua
+Prices.lua
+Scan.lua
+Planner.lua
+UI.lua
