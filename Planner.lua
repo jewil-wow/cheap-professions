@@ -268,8 +268,17 @@ function Ctx:ReagentCost(item, qty, s, depth, commit)
         else
             local crafts = rest / yieldOf(self.prof, maker)
             local rg = maker.rg
+            local spentBefore = self.prepSpent or 0
             for j = 1, #rg, 2 do
                 self:ReagentCost(rg[j], rg[j + 1] * crafts, s, depth + 1, true)
+            end
+            -- this craft's own materials cost (nested extra crafts are recorded separately)
+            local own = craftCost - ((self.prepSpent or 0) - spentBefore)
+            self.prepSpent = (self.prepSpent or 0) + own
+            if self.prepInfo then
+                local pi = self.prepInfo[item] or { qty = 0, crafts = 0, cost = 0, rec = maker }
+                pi.qty, pi.crafts, pi.cost = pi.qty + rest, pi.crafts + crafts, pi.cost + own
+                self.prepInfo[item] = pi
             end
             addTo(self.prep, item, rest)
             if self.prepBatches then
@@ -478,9 +487,10 @@ function Planner.Build(prof, startSkill, target, planned)
                 cur = nil
                 skill = s + 1
             else
-                ctx.sink, ctx.prep, ctx.prepBatches = {}, {}, {}
+                ctx.sink, ctx.prep, ctx.prepBatches, ctx.prepInfo = {}, {}, {}, {}
                 local _, crafts, matsCost, made = ctx:PointCost(pick, s, true)
-                local sink, prep, batches = ctx.sink, ctx.prep, ctx.prepBatches
+                local sink, prep, batches, prepInfo = ctx.sink, ctx.prep, ctx.prepBatches, ctx.prepInfo
+                ctx.prepInfo = nil
                 ctx.sink, ctx.prep, ctx.prepBatches = nil, nil, nil
 
                 -- Prep crafts happen first, at the current skill, and may give skill-ups.
@@ -507,7 +517,7 @@ function Planner.Build(prof, startSkill, target, planned)
                 if not (cur and cur.rec == pick and cur.to == s) then
                     cur = {
                         from = s, to = newTo, rec = pick, crafts = 0, reagents = 0, made = 0,
-                        mats = {}, prep = {}, prepGain = {}, chanceFrom = Planner.Chance(pick, s),
+                        mats = {}, prep = {}, prepGain = {}, prepInfo = {}, chanceFrom = Planner.Chance(pick, s),
                     }
                     table.insert(steps, cur)
                 else
@@ -526,6 +536,11 @@ function Planner.Build(prof, startSkill, target, planned)
                     end
                 end
                 for item, q in pairs(prep) do addTo(cur.prep, item, q) end
+                for item, pi in pairs(prepInfo) do
+                    local c = cur.prepInfo[item] or { qty = 0, crafts = 0, cost = 0, rec = pi.rec }
+                    c.qty, c.crafts, c.cost = c.qty + pi.qty, c.crafts + pi.crafts, c.cost + pi.cost
+                    cur.prepInfo[item] = c
+                end
                 cur.crafts = cur.crafts + crafts
                 cur.reagents = cur.reagents + matsCost
                 cur.made = cur.made + made

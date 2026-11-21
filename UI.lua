@@ -217,42 +217,127 @@ local function render(plan)
     add()
 
     add(YEL .. "Step 4|r - Craft" .. GRY .. "  (hover a step for its materials and prices)" .. R)
+    add()
     local estimated = {}
     for _, a in ipairs(plan.acquire) do
         if not a.exact then estimated[a.rec] = true end
     end
+    -- x, width per column; the 5th field "wrap" lets long cells wrap onto more lines
+    local S1, S2, S3, S4, S5 = 0, 52, 212, 262, 492
+    addCols({
+        { YEL .. "Skill" .. R, S1, 50, "LEFT" }, { YEL .. "Craft" .. R, S2, 155, "LEFT" },
+        { YEL .. "# Crafts" .. R, S3, 45, "RIGHT" }, { YEL .. "Total Mats" .. R, S4 + 8, 220, "LEFT" },
+        { YEL .. "Vendor/Keep" .. R, S5, 98, "LEFT" },
+    })
+
+    -- "Light Leather (40), Silken Thread (10)": materials for `crafts` crafts of rec.
+    local function matsList(rec, crafts)
+        local parts = {}
+        local n = math.ceil(crafts - 1e-6) -- same craft count as the "# Crafts" column
+        local rg = rec.rg
+        for j = 1, #rg, 2 do
+            parts[#parts + 1] = ("%s (%d)"):format(Name(rg[j]), rg[j + 1] * n)
+        end
+        return table.concat(parts, ", ")
+    end
+
+    -- Display rows. Extra crafts of an intermediate (made because a step needs more than
+    -- earlier steps produced) are folded into the latest earlier step that makes the same
+    -- item ("make them all then"), or else shown as their own row with no skill range.
+    local rows = {}
+    local lastMaker = {} -- item -> display row of the latest step crafting it
+    for _, st in ipairs(plan.steps) do
+        local row = {
+            st = st, rec = st.rec, crafts = st.crafts, mats = st.reagents,
+            made = st.made, keep = st.keep or 0, extraCrafts = 0, extraCost = 0,
+        }
+        local items = {}
+        for item in pairs(st.prepInfo) do items[#items + 1] = item end
+        table.sort(items, function(a, b) return st.prepInfo[a].qty > st.prepInfo[b].qty end)
+        for _, item in ipairs(items) do
+            local pi = st.prepInfo[item]
+            row.mats = row.mats - pi.cost
+            local maker = lastMaker[item]
+            if maker then
+                maker.crafts = maker.crafts + pi.crafts
+                maker.mats = maker.mats + pi.cost
+                maker.made = maker.made + pi.qty
+                maker.keep = maker.keep + pi.qty
+                maker.extraCrafts = maker.extraCrafts + pi.crafts
+                maker.extraCost = maker.extraCost + pi.cost
+            else
+                local prepRow = {
+                    prepOnly = true, rec = pi.rec, crafts = pi.crafts, mats = pi.cost,
+                    made = pi.qty, keep = pi.qty, gain = st.prepGain[item] or 0,
+                    extraCrafts = 0, extraCost = 0,
+                }
+                rows[#rows + 1] = prepRow
+                lastMaker[item] = prepRow
+            end
+        end
+        rows[#rows + 1] = row
+        if st.rec.i then lastMaker[st.rec.i] = row end
+    end
+
     local capIdx = 1
     while RANK_CAPS[capIdx] and RANK_CAPS[capIdx] <= plan.start do capIdx = capIdx + 1 end
-    for _, st in ipairs(plan.steps) do
-        while RANK_CAPS[capIdx] and st.to > RANK_CAPS[capIdx] do
-            local td = ns.Data.trainerData and ns.Data.trainerData[plan.prof]
-            local at = td and td.ranks[capIdx]
-            local when = at and (" (learnable at " .. at .. ")") or ""
-            add(("  %s-- train the next rank%s before %d --%s"):format(BLU, when, RANK_CAPS[capIdx], R))
-            capIdx = capIdx + 1
+    for _, row in ipairs(rows) do
+        local st = row.st
+        if st then
+            while RANK_CAPS[capIdx] and st.to > RANK_CAPS[capIdx] do
+                local td = ns.Data.trainerData and ns.Data.trainerData[plan.prof]
+                local at = td and td.ranks[capIdx]
+                local when = at and (" (learnable at " .. at .. ")") or ""
+                add(("%s-- train the next rank%s before %d --%s"):format(BLU, when, RANK_CAPS[capIdx], R))
+                capIdx = capIdx + 1
+            end
         end
-        local greenTxt = st.green and (GRN .. " (green)" .. R) or ""
-        local fromEarlier = {}
-        for item, m in pairs(st.mats) do
-            if m.stock > 0.5 then fromEarlier[#fromEarlier + 1] = cnt(m.stock) .. " " .. Name(item) end
+
+        local rec = row.rec
+        local craft = (usedPlanned[rec] and (BLU .. "*" .. R) or "") .. (estimated[rec] and (ORA .. "~" .. R) or "")
+            .. WHT .. rec.n .. R .. ((st and st.green) and (GRN .. " (green)" .. R) or "")
+
+        local fate
+        if not rec.i then
+            fate = GRY .. "-" .. R
+        else
+            local sellTo = ns.db.ahSell[rec.i] and "sell on AH" or "vendor"
+            if row.keep >= row.made - 0.5 then
+                fate = ORA .. "Keep all" .. R
+            elseif row.keep >= 0.5 then
+                fate = ORA .. "Keep " .. cnt(row.keep) .. R .. ", " .. sellTo .. " rest"
+            else
+                fate = sellTo == "vendor" and "Vendor" or "Sell on AH"
+            end
         end
-        local earlierTxt = #fromEarlier > 0 and (" + " .. table.concat(fromEarlier, ", ") .. " from earlier steps") or ""
-        local keepTxt = ""
-        if st.keep and st.keep >= 0.5 then
-            local all = st.keep >= st.made - 0.5
-            keepTxt = ORA .. (all and " - save them all for later steps" or (" - save " .. cnt(st.keep) .. " for later steps")) .. R
+
+        local tip
+        if st then
+            local base = stepTip(st)
+            tip = function(tt)
+                base(tt)
+                if row.extraCrafts > 0.5 then
+                    tt:AddLine(" ")
+                    tt:AddLine(("Plus %s more crafts to keep for later steps (%s, no skill-ups counted)."):format(
+                        cnt(row.extraCrafts), Money(row.extraCost)), 1, 0.5, 0.25, true)
+                end
+            end
+        else
+            tip = function(tt)
+                tt:AddLine(rec.n)
+                tt:AddLine(("Craft %s now; the next steps use them. %s"):format(cnt(row.crafts),
+                    row.gain >= 0.5 and ("Expect about " .. math.floor(row.gain + 0.5) .. " skill-ups.") or "No skill-ups expected."),
+                    1, 1, 1, true)
+                tt:AddDoubleLine("Materials", Money(row.mats), 1, 0.82, 0, 1, 1, 1)
+            end
         end
-        add(("  %3d-%-3d  %s%s%s|r x%s%s%s   %smats %s%s%s"):format(
-            st.from, st.to, WHT, (usedPlanned[st.rec] and (BLU .. "*" .. WHT) or "") .. (estimated[st.rec] and (ORA .. "~" .. WHT) or ""), st.rec.n, cnt(st.crafts), greenTxt, keepTxt,
-            GRY, Money(st.reagents), earlierTxt, R), stepTip(st))
-        local prep = {}
-        for item, q in pairs(st.prep) do prep[#prep + 1] = { item = item, q = q } end
-        table.sort(prep, function(a, b) return a.q > b.q end)
-        for _, p in ipairs(prep) do
-            local g = st.prepGain[p.item] or 0
-            local gainTxt = g >= 0.5 and ("~" .. math.floor(g + 0.5) .. " skill-ups") or "no skill-ups"
-            add(("             %sfirst craft %s x %s (%s), used in this step%s"):format(GRY, cnt(p.q), Name(p.item), gainTxt, R))
-        end
+
+        addCols({
+            { st and ("%d-%d"):format(st.from, st.to) or "-", S1, 50, "LEFT" }, { craft, S2, 155, "LEFT", true },
+            { cnt(row.crafts), S3, 45, "RIGHT" }, { matsList(rec, row.crafts), S4 + 8, 220, "LEFT", true },
+            { fate, S5, 98, "LEFT", true },
+        }, tip)
+
     end
     add()
 
@@ -328,6 +413,7 @@ local function setLines(lines)
     for i, line in ipairs(lines) do
         local row = getRow(i)
         row.cols = row.cols or {}
+        local colH = 0
         for c = 1, math.max(#row.cols, line.cols and #line.cols or 0) do
             local col = line.cols and line.cols[c]
             local fs = row.cols[c]
@@ -340,9 +426,10 @@ local function setLines(lines)
                 fs:SetPoint("TOPLEFT", col[2], 0)
                 fs:SetWidth(col[3])
                 fs:SetJustifyH(col[4])
-                fs:SetWordWrap(false)
+                fs:SetWordWrap(col[5] and true or false)
                 fs:SetText(col[1])
                 fs:Show()
+                colH = math.max(colH, fs:GetStringHeight())
             elseif fs then
                 fs:Hide()
             end
@@ -361,7 +448,8 @@ local function setLines(lines)
             row.check.onClick = nil
             row.check:Hide()
         end
-        local h = math.max(line.check and 20 or 12, row.fs:GetStringHeight() + (line.check and 6 or 0)) + 2
+        local h = math.max(line.check and 20 or 12, row.fs:GetStringHeight() + (line.check and 6 or 0), colH) + 2
+        if line.cols then h = h + 2 end
         row:SetHeight(h)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", 0, -y)
