@@ -96,7 +96,7 @@ for _, line in ipairs(ns.UI.Render(plan)) do
     local text = line.text
     if line.cols then
         local parts = {}
-        for _, c in ipairs(line.cols) do parts[#parts + 1] = strip(c[1]) end
+        for _, c in ipairs(line.cols) do parts[#parts + 1] = strip(c[1]):gsub("\n", "; ") end
         text = table.concat(parts, " | ")
     end
     print((line.check and (line.check.checked and "[x] " or "[ ] ") or "") .. strip(text))

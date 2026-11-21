@@ -62,11 +62,13 @@ end
 
 -- Returns a list of { text = string, tip = function(tooltip) or nil }.
 local MAX_LOOK_FOR = 12
+local ROW_W = 590
 
 local function render(plan)
     local L = {}
     local function add(s, tip, check) L[#L + 1] = { text = s or "", tip = tip, check = check } end
-    local function addCols(cols, tip) L[#L + 1] = { text = "", cols = cols, tip = tip } end
+    -- cols: { text, x, width, justify, wrap }. grid = true draws cell borders ("top" also the top edge).
+    local function addCols(cols, tip, grid) L[#L + 1] = { text = "", cols = cols, tip = tip, grid = grid } end
     local t = plan.totals
     local base = plan.baseline or plan
     local planned = ns.Planned(plan.prof)
@@ -99,14 +101,14 @@ local function render(plan)
 
     add(("%s%s|r  %d -> %d"):format(YEL, ns.PROF_NAMES[plan.prof], plan.start, plan.target))
     add()
-    add(YEL .. "Step 1|r - Run a full scan with Auctionator to get the latest prices.")
+    add(YEL .. "Step 1|r - Run a full scan with Auctionator to get the latest prices, then press Re-plan in the top right.")
     add(("Using your latest scan, it will cost about %s%s|r to level."):format(WHT, Money(base.totals.net)))
     add()
     add(YEL .. "Step 2|r - Optional Recipes" .. R)
     if #lookFor == 0 then
         add(GRY .. "None: no recipe missing from the AH would save you money on this plan." .. R)
     else
-        add(GRY .. "These recipes aren't listed on the AH, but could save you some money if you obtained them. The gold amount next to the recipe is the approximate amount you would save if you got the recipe for free." .. R)
+        add(GRY .. "These recipes aren't listed on the AH, but will save you some money if you obtain them. The gold amount next to the recipe is the approximate amount you would save if you got the recipe for free." .. R)
         add()
         add(GRY .. "Look these up on wowhead and decide if it's worth traveling to a vendor or farming a drop. Tick off the ones you plan to obtain to update the plan." .. R)
         add()
@@ -144,8 +146,20 @@ local function render(plan)
     add(YEL .. "Step 3|r - Shopping List" .. R)
     add(("Updated cost using optional recipes: %s%s|r%s"):format(WHT, Money(t.net), saved))
     add()
-    add(("%smaterials: AH %s + vendor %s, recipes %s, minus sales %s%s"):format(
-        GRY, Money(t.ah), Money(t.vendor), Money(t.recipes), Money(t.sale), R))
+    -- Statement-style breakdown: costs negative, sales positive, amounts right-aligned.
+    local function signed(v)
+        if v > 0.5 then return "+" .. Money(v) end
+        if v < -0.5 then return Money(v) end
+        return Money(0)
+    end
+    local function stmt(label, v, color)
+        addCols({ { (color or "") .. label .. R, 0, 70, "LEFT" }, { (color or "") .. signed(v) .. R, 70, 110, "RIGHT" } })
+    end
+    stmt("AH:", -t.ah)
+    stmt("Vendor:", -t.vendor)
+    stmt("Recipes:", -t.recipes)
+    stmt("Sales:", t.sale)
+    stmt("Net:", -t.net, WHT)
     if nPlanned > 0 then
         add(GRY .. "Steps using a ticked recipe are marked " .. BLU .. "*" .. GRY .. ". Have the recipe by its step." .. R)
     end
@@ -169,21 +183,31 @@ local function render(plan)
         add(YEL .. "Recipes" .. R)
         add(GRY .. "Prices are current AH price. Check wowhead for vendor price/location and feel free to travel to the vendor if it's worth the cost savings." .. R)
         add()
+        local R1, R2, R3 = 0, 55, 405
+        local RW1, RW2, RW3 = 55, 350, 185
+        addCols({
+            { YEL .. "Skill" .. R, R1, RW1, "LEFT" }, { YEL .. "Recipe" .. R, R2, RW2, "LEFT" },
+            { YEL .. "Price" .. R, R3, RW3, "RIGHT" },
+        }, nil, "top")
         for _, a in ipairs(purchase) do
             local note = a.how == "vendor" and (GRY .. " (vendor price you've seen)" .. R) or ""
-            add(("  %3d  %s  %s%s"):format(a.learn, Name(a.rec.book), Money(a.cost), note))
+            addCols({
+                { tostring(a.learn), R1, RW1, "LEFT" }, { Name(a.rec.book), R2, RW2, "LEFT", true },
+                { Money(a.cost) .. note, R3, RW3, "RIGHT", true },
+            }, nil, true)
         end
         add()
     end
 
     add(YEL .. "Materials" .. R)
-    add(GRY .. "If the total cost you see on the AH is much different than this table, rescan the AH." .. R)
+    add(GRY .. "If the total cost you see on the AH is much different than this table, rescan the AH, then press Re-plan in the top right." .. R)
     add()
-    local C1, C2, C3, C4 = 0, 300, 390, 490
+    local C1, C2, C3, C4 = 0, 290, 380, 485
+    local CW1, CW2, CW3, CW4 = 290, 90, 105, 105
     addCols({
-        { YEL .. "Item" .. R, C1, 290, "LEFT" }, { YEL .. "Quantity" .. R, C2, 80, "RIGHT" },
-        { YEL .. "Cost per Item" .. R, C3, 95, "RIGHT" }, { YEL .. "Total Cost" .. R, C4, 95, "RIGHT" },
-    })
+        { YEL .. "Item" .. R, C1, CW1, "LEFT" }, { YEL .. "Quantity" .. R, C2, CW2, "RIGHT" },
+        { YEL .. "Cost per Item" .. R, C3, CW3, "RIGHT" }, { YEL .. "Total Cost" .. R, C4, CW4, "RIGHT" },
+    }, nil, "top")
     local grand, anyThin, anySeed, anyBags = 0, false, false, false
     for _, row in ipairs(plan.shopping) do
         local qty = row.ah + row.vendor
@@ -204,11 +228,14 @@ local function render(plan)
         if seed then anySeed = true end
         grand = grand + total
         addCols({
-            { name, C1, 290, "LEFT" }, { tostring(qty), C2, 80, "RIGHT" },
-            { (seed and "~" or "") .. Money(unit), C3, 95, "RIGHT" }, { Money(total), C4, 95, "RIGHT" },
-        })
+            { name, C1, CW1, "LEFT", true }, { tostring(qty), C2, CW2, "RIGHT" },
+            { (seed and "~" or "") .. Money(unit), C3, CW3, "RIGHT" }, { Money(total), C4, CW4, "RIGHT" },
+        }, nil, true)
     end
-    addCols({ { WHT .. "Total" .. R, C1, 290, "LEFT" }, { WHT .. Money(grand) .. R, C4, 95, "RIGHT" } })
+    addCols({
+        { WHT .. "Total" .. R, C1, CW1, "LEFT" }, { "", C2, CW2, "RIGHT" },
+        { "", C3, CW3, "RIGHT" }, { WHT .. Money(grand) .. R, C4, CW4, "RIGHT" },
+    }, nil, true)
     local notes = {}
     if anyThin then notes[#notes + 1] = "! = the plan needs much of what's listed; it may sell out, so buy these first" end
     if anySeed then notes[#notes + 1] = "~ = approximate vendor price" end
@@ -222,15 +249,16 @@ local function render(plan)
     for _, a in ipairs(plan.acquire) do
         if not a.exact then estimated[a.rec] = true end
     end
-    -- x, width per column; the 5th field "wrap" lets long cells wrap onto more lines
-    local S1, S2, S3, S4, S5 = 0, 52, 212, 262, 492
+    -- Cells are edge to edge (x, width) and drawn with borders.
+    local S1, S2, S3, S4, S5 = 0, 55, 215, 270, 490
+    local W1, W2, W3, W4, W5 = 55, 160, 55, 220, 100
     addCols({
-        { YEL .. "Skill" .. R, S1, 50, "LEFT" }, { YEL .. "Craft" .. R, S2, 155, "LEFT" },
-        { YEL .. "# Crafts" .. R, S3, 45, "RIGHT" }, { YEL .. "Total Mats" .. R, S4 + 8, 220, "LEFT" },
-        { YEL .. "Keep/Sell" .. R, S5, 98, "LEFT" },
-    })
+        { YEL .. "Skill" .. R, S1, W1, "LEFT" }, { YEL .. "Craft" .. R, S2, W2, "LEFT" },
+        { YEL .. "# Crafts" .. R, S3, W3, "RIGHT" }, { YEL .. "Total Mats" .. R, S4, W4, "LEFT" },
+        { YEL .. "Keep/Sell" .. R, S5, W5, "LEFT" },
+    }, nil, "top")
 
-    -- "Light Leather (40), Silken Thread (10)": materials for `crafts` crafts of rec.
+    -- One "Light Leather (40)" line per material, for `crafts` crafts of rec.
     local function matsList(rec, crafts)
         local parts = {}
         local n = math.ceil(crafts - 1e-6) -- same craft count as the "# Crafts" column
@@ -238,7 +266,7 @@ local function render(plan)
         for j = 1, #rg, 2 do
             parts[#parts + 1] = ("%s (%d)"):format(Name(rg[j]), rg[j + 1] * n)
         end
-        return table.concat(parts, ", ")
+        return table.concat(parts, "\n")
     end
 
     -- Display rows. Extra crafts of an intermediate (made because a step needs more than
@@ -288,7 +316,8 @@ local function render(plan)
                 local td = ns.Data.trainerData and ns.Data.trainerData[plan.prof]
                 local at = td and td.ranks[capIdx]
                 local when = at and (" (learnable at " .. at .. ")") or ""
-                add(("%s-- train the next rank%s before %d --%s"):format(BLU, when, RANK_CAPS[capIdx], R))
+                addCols({ { ("%sTrain the next rank%s before %d%s"):format(BLU, when, RANK_CAPS[capIdx], R),
+                    0, ROW_W, "CENTER", true } }, nil, true)
                 capIdx = capIdx + 1
             end
         end
@@ -333,10 +362,10 @@ local function render(plan)
         end
 
         addCols({
-            { st and ("%d-%d"):format(st.from, st.to) or "-", S1, 50, "LEFT" }, { craft, S2, 155, "LEFT", true },
-            { cnt(row.crafts), S3, 45, "RIGHT" }, { matsList(rec, row.crafts), S4 + 8, 220, "LEFT", true },
-            { fate, S5, 98, "LEFT", true },
-        }, tip)
+            { st and ("%d-%d"):format(st.from, st.to) or "-", S1, W1, "LEFT" }, { craft, S2, W2, "LEFT", true },
+            { cnt(row.crafts), S3, W3, "RIGHT" }, { matsList(rec, row.crafts), S4, W4, "LEFT", true },
+            { fate, S5, W5, "LEFT", true },
+        }, tip, true)
 
     end
     add()
@@ -374,8 +403,6 @@ local function setTarget(prof, t)
         ns.db.targets[prof] = nil
     end
 end
-local ROW_W = 590
-
 local function getRow(i)
     local row = rows[i]
     if row then return row end
@@ -413,7 +440,9 @@ local function setLines(lines)
     for i, line in ipairs(lines) do
         local row = getRow(i)
         row.cols = row.cols or {}
+        row.lines = row.lines or {}
         local colH = 0
+        local PADX, PADY = line.grid and 4 or 0, line.grid and 3 or 0
         for c = 1, math.max(#row.cols, line.cols and #line.cols or 0) do
             local col = line.cols and line.cols[c]
             local fs = row.cols[c]
@@ -423,8 +452,8 @@ local function setLines(lines)
                     row.cols[c] = fs
                 end
                 fs:ClearAllPoints()
-                fs:SetPoint("TOPLEFT", col[2], 0)
-                fs:SetWidth(col[3])
+                fs:SetPoint("TOPLEFT", col[2] + PADX, -PADY)
+                fs:SetWidth(col[3] - 2 * PADX)
                 fs:SetJustifyH(col[4])
                 fs:SetWordWrap(col[5] and true or false)
                 fs:SetText(col[1])
@@ -448,9 +477,39 @@ local function setLines(lines)
             row.check.onClick = nil
             row.check:Hide()
         end
-        local h = math.max(line.check and 20 or 12, row.fs:GetStringHeight() + (line.check and 6 or 0), colH) + 2
-        if line.cols then h = h + 2 end
+        local h
+        if line.cols then
+            row.fs:SetText("")
+            h = math.max(12, colH) + 2 * PADY + (line.grid and 1 or 4)
+        else
+            h = math.max(line.check and 20 or 12, row.fs:GetStringHeight() + (line.check and 6 or 0)) + 2
+        end
         row:SetHeight(h)
+
+        -- cell borders
+        local n = 0
+        local function border(x1, y1, x2, y2)
+            n = n + 1
+            local t = row.lines[n]
+            if not t then
+                t = row:CreateTexture(nil, "BORDER")
+                t:SetColorTexture(0.45, 0.45, 0.45, 0.9)
+                row.lines[n] = t
+            end
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", row, "TOPLEFT", x1, -y1)
+            t:SetSize(math.max(1, x2 - x1), math.max(1, y2 - y1))
+            t:Show()
+        end
+        if line.grid and line.cols then
+            local last = line.cols[#line.cols]
+            local right = last[2] + last[3]
+            if line.grid == "top" then border(0, 0, right, 1) end
+            border(0, h - 1, right, h) -- bottom
+            for _, col in ipairs(line.cols) do border(col[2], 0, col[2] + 1, h) end
+            border(right - 1, 0, right, h)
+        end
+        for k = n + 1, #row.lines do row.lines[k]:Hide() end
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", 0, -y)
         row:Show()
