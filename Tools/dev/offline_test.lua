@@ -85,6 +85,7 @@ for name in (os.getenv("JP_PLANNED") or ""):gmatch("[^;]+") do
     end
 end
 local plan = assert(ns.UI.Compute(prof, start, target))
+PLAN = plan
 local ms = (os.clock() - t0) * 1000
 local showTips = arg[4] == "tips"
 local function strip(t) return (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end

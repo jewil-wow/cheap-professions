@@ -25,6 +25,7 @@ local DB_DEFAULTS = {
 }
 
 local CHAR_DEFAULTS = {
+    plans = {},   -- plans[prof] = the last plan built (kept until Re-plan)
     known = {},   -- known[prof][recipeKey] = true
     planned = {}, -- planned[prof][recipeKey] = true: recipes the player intends to obtain
 }
@@ -183,7 +184,7 @@ SlashCmdList.JEWILPROF = function(msg)
             if not id then return ns.Print("Unknown item:", arg) end
             ns.db.ahSell[id] = (sub == "add") or nil
             ns.Print(sub == "add" and "Added" or "Removed", ns.Prices.ItemName(id))
-            ns.UI.Refresh()
+            ns.UI.SettingsChanged()
         end
     elseif cmd == "opt" then
         local name, val = rest:match("^(%S+)%s+(%S+)$")
@@ -193,7 +194,7 @@ SlashCmdList.JEWILPROF = function(msg)
         if name:lower() == "green" then on = not on end -- "green on" = allow green crafts
         ns.db.opts[map[name:lower()]] = on
         ns.Print(name, "=", val)
-        ns.UI.Refresh()
+        ns.UI.SettingsChanged()
     else
         local prof = ns.ProfKey(cmd)
         if not prof then

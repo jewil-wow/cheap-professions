@@ -255,7 +255,8 @@ function Ctx:ReagentCost(item, qty, s, depth, commit)
 
     local r
     if depth == 0 and self.sink then
-        r = self.sink[item] or { qty = 0, cost = 0, stock = 0, bags = 0, ah = 0, vendor = 0, craft = 0 }
+        r = self.sink[item] or { qty = 0, cost = 0, stock = 0, bags = 0, ah = 0, vendor = 0, craft = 0,
+            ahPrice = st.ah, vendorPrice = st.vendor, seed = st.seed }
         self.sink[item] = r
         r.qty, r.cost = r.qty + qty, r.cost + cost
         r.stock, r.bags = r.stock + fromStock, r.bags + fromBags
@@ -532,7 +533,9 @@ function Planner.Build(prof, startSkill, target, planned)
                     if not m then
                         cur.mats[item] = r
                     else
-                        for k, v in pairs(r) do m[k] = m[k] + v end
+                        for _, k in ipairs({ "qty", "cost", "stock", "bags", "ah", "vendor", "craft" }) do
+                            m[k] = m[k] + r[k]
+                        end
                     end
                 end
                 for item, q in pairs(prep) do addTo(cur.prep, item, q) end

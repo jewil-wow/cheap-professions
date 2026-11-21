@@ -39,11 +39,11 @@ local function stepTip(st)
             if m.stock > 1e-6 then parts[#parts + 1] = cnt(m.stock) .. " from earlier steps (free)" end
             if m.bags > 1e-6 then parts[#parts + 1] = cnt(m.bags) .. " bags (free)" end
             if m.ah > 1e-6 then
-                local p = ns.Prices.AH(x.item)
+                local p = m.ahPrice
                 parts[#parts + 1] = ("%s AH @ %s"):format(cnt(m.ah), p and Money(p) or "?")
             end
             if m.vendor > 1e-6 then
-                local p, seed = ns.Prices.Vendor(x.item)
+                local p, seed = m.vendorPrice, m.seed
                 parts[#parts + 1] = ("%s vendor @ %s%s"):format(cnt(m.vendor), seed and "~" or "", p and Money(p) or "?")
             end
             if m.craft > 1e-6 then parts[#parts + 1] = cnt(m.craft) .. " crafted just before" end
@@ -134,7 +134,7 @@ local function render(plan)
                 checked = planned[key] and true or false,
                 onClick = function(checked)
                     planned[key] = checked or nil
-                    UI.Refresh()
+                    UI.Replan()
                 end,
             })
         end
@@ -519,6 +519,9 @@ local function setLines(lines)
     content:SetHeight(y + 10)
 end
 
+local live = {} -- prof -> plan (with recipe tables), for this session
+local stale = {} -- prof -> reason new data arrived since the plan was made
+
 local function build()
     local ok, f = pcall(CreateFrame, "Frame", "JewilProfFrame", UIParent, "BasicFrameTemplateWithInset")
     if not ok then f = CreateFrame("Frame", "JewilProfFrame", UIParent, "BackdropTemplate") end
@@ -543,7 +546,7 @@ local function build()
         b:SetScript("OnClick", function()
             state.prof = prof
             state.start = nil
-            UI.Refresh()
+            UI.Refresh() -- shows the saved plan, or builds one if there is none
         end)
     end
 
@@ -558,7 +561,7 @@ local function build()
     startBox:SetScript("OnEnterPressed", function(self)
         state.start = tonumber(self:GetText())
         self:ClearFocus()
-        UI.Refresh()
+        UI.Replan()
     end)
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("LEFT", startBox, "RIGHT", 6, 0)
@@ -575,7 +578,7 @@ local function build()
     targetBox:SetScript("OnEnterPressed", function(self)
         setTarget(state.prof, tonumber(self:GetText()))
         self:ClearFocus()
-        UI.Refresh()
+        UI.Replan()
     end)
 
     local refresh = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -583,9 +586,12 @@ local function build()
     refresh:SetPoint("TOPRIGHT", -14, -56)
     refresh:SetText("Re-plan")
     refresh:SetScript("OnClick", function()
-        state.start = tonumber(startBox:GetText())
+        -- Use what's in the box only if you changed it; otherwise plan from your current skill.
+        local plan = state.prof and live[state.prof]
+        local typed = tonumber(startBox:GetText())
+        state.start = (typed and not (plan and typed == plan.start)) and typed or nil
         setTarget(state.prof, tonumber(targetBox:GetText()))
-        UI.Refresh()
+        UI.Replan()
     end)
 
     local green = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
@@ -597,7 +603,7 @@ local function build()
     green:SetScript("OnShow", function(self) self:SetChecked(ns.db.opts.avoidGreen) end)
     green:SetScript("OnClick", function(self)
         ns.db.opts.avoidGreen = self:GetChecked() and true or false
-        UI.Refresh()
+        UI.Replan()
     end)
     green:SetChecked(ns.db.opts.avoidGreen)
 
@@ -620,6 +626,53 @@ function UI.Compute(prof, start, target)
     return plan
 end
 
+---------------------------------------------------------------------------
+-- Saved plans. A plan stays exactly as built (prices, bags, quantities) until the player
+-- asks for a new one, so buying materials doesn't change the list being bought from.
+-- Plans are stored per character and profession, with recipes stored by key.
+---------------------------------------------------------------------------
+local function isRecipe(t)
+    return type(t) == "table" and t.rg and t.k and t.n
+end
+
+local function freeze(v, prof)
+    if type(v) ~= "table" then return v end
+    if isRecipe(v) then return { __rec = ns.RecipeKey(v) } end
+    local out = {}
+    for k, x in pairs(v) do out[k] = freeze(x, prof) end
+    return out
+end
+
+local function thaw(v, byKey)
+    if type(v) ~= "table" then return v end
+    if v.__rec then return byKey[v.__rec] end
+    local out = {}
+    for k, x in pairs(v) do out[k] = thaw(x, byKey) end
+    return out
+end
+
+UI._freeze, UI._thaw = freeze, thaw -- for the offline test
+
+local function savedPlan(prof)
+    if live[prof] then return live[prof] end
+    local stored = ns.cdb.plans and ns.cdb.plans[prof]
+    if not stored then return end
+    local byKey = {}
+    for _, rec in ipairs(ns.Data.recipes[prof] or {}) do byKey[ns.RecipeKey(rec)] = rec end
+    local ok, plan = pcall(thaw, stored, byKey)
+    if ok and plan and plan.steps then
+        live[prof] = plan
+        return plan
+    end
+end
+
+local function storePlan(prof, plan)
+    live[prof] = plan
+    ns.cdb.plans = ns.cdb.plans or {}
+    ns.cdb.plans[prof] = freeze(plan, prof)
+end
+
+-- Draw the saved plan for the selected profession (no recalculation).
 function UI.Refresh()
     if not frame or not frame:IsShown() then return end
     if not state.prof then
@@ -630,33 +683,69 @@ function UI.Refresh()
         })
         return
     end
+    local plan = savedPlan(state.prof)
+    if not plan then return UI.Replan() end
+    startBox:SetText(tostring(plan.start))
+    targetBox:SetText(tostring(plan.target))
+    local lines = render(plan)
+    local head = {}
+    head[#head + 1] = { text = ("%sPlan made %s from skill %d. It stays fixed until you press Re-plan.%s"):format(
+        GRY, date("%b %d %H:%M", plan.builtAt or time()), plan.start, R) }
+    if stale[state.prof] then
+        head[#head + 1] = { text = ORA .. stale[state.prof] .. " Press Re-plan to use it." .. R }
+    end
+    for i = #head, 1, -1 do table.insert(lines, 1, head[i]) end
+    setLines(lines)
+end
+
+-- Build a new plan for the selected profession from current prices, bags and settings.
+function UI.Replan()
+    if not frame or not frame:IsShown() or not state.prof then return end
     local start = state.start
     if not start then
         local rank = ns.CharSkill(state.prof)
         start = rank or 1
     end
-    startBox:SetText(tostring(start))
     local target = getTarget(state.prof)
+    startBox:SetText(tostring(start))
     targetBox:SetText(tostring(target))
     if start >= target then
         setLines({ { text = ("Start skill %d is already at or above the target %d."):format(start, target) } })
         return
     end
-    local t0 = debugprofilestop()
     local ok, plan = pcall(UI.Compute, state.prof, start, target)
     if not ok then
         setLines({ { text = RED .. "Planner error: " .. tostring(plan) .. R } })
         geterrorhandler()(plan)
+        return
     elseif not plan then
         setLines({ { text = "Nothing to plan." } })
-    else
-        local lines = render(plan)
-        lines[#lines + 1] = { text = "" }
-        lines[#lines + 1] = { text = ("%splanned in %.0f ms%s"):format(GRY, debugprofilestop() - t0, R) }
-        setLines(lines)
+        return
     end
+    plan.builtAt = time()
+    storePlan(state.prof, plan)
+    stale[state.prof] = ns.Prices.HasPending()
+        and "Some item details were still loading when this plan was made, so sale values may be low." or nil
+    UI.Refresh()
 end
 
+-- Settings changed: rebuild the open plan; other saved plans just get a notice.
+function UI.SettingsChanged()
+    for _, prof in ipairs(ns.PROFESSIONS) do
+        if prof ~= state.prof or not (frame and frame:IsShown()) then
+            if savedPlan(prof) then stale[prof] = "Settings changed since this plan was made." end
+        end
+    end
+    if frame and frame:IsShown() and state.prof then UI.Replan() end
+end
+
+-- New trainer/recipe data arrived: keep the plan, but say so.
+function UI.MarkStale(prof, reason)
+    if prof then stale[prof] = reason end
+    UI.Refresh()
+end
+
+-- Redraw only (e.g. item names finished loading).
 UI.RefreshSoon = ns.Debounce(0.5, function() UI.Refresh() end)
 
 function UI.Show(prof, start, target)
@@ -665,7 +754,7 @@ function UI.Show(prof, start, target)
     state.start = start
     if prof and target then setTarget(prof, target) end
     frame:Show()
-    UI.Refresh()
+    if start or target then UI.Replan() else UI.Refresh() end
 end
 
 function UI.Toggle()

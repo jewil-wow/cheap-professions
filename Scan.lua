@@ -68,7 +68,7 @@ function Scan.TradeSkill()
     -- Only overwrite when the list actually loaded (it can be empty on the first event).
     if matched > 0 then
         ns.cdb.known[prof] = known
-        if ns.UI then ns.UI.RefreshSoon() end
+        if ns.UI then ns.UI.MarkStale(prof, "Your known recipes were updated.") end
     end
 end
 
@@ -101,7 +101,9 @@ function Scan.Trainer()
     if updated > 0 and updated ~= lastTrainerCount then
         lastTrainerCount = updated
         ns.Print(("Recorded %d trainer recipes (learn levels and costs)."):format(updated))
-        if ns.UI then ns.UI.RefreshSoon() end
+        if ns.UI then
+            for prof in pairs(ns.db.trainer) do ns.UI.MarkStale(prof, "New trainer data was recorded.") end
+        end
     end
 end
 

@@ -97,6 +97,10 @@ function Prices.Money(copper)
     return neg and ("-" .. str) or str
 end
 
+function Prices.HasPending()
+    return next(pendingLoad) ~= nil
+end
+
 -- Fires (debounced) when item data we asked for arrives, so plans can refresh sale values.
 ns.On("GET_ITEM_INFO_RECEIVED", function(itemID)
     if pendingLoad[itemID] then
