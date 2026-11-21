@@ -99,8 +99,8 @@ local function render(plan)
 
     add(("%s%s|r  %d -> %d"):format(YEL, ns.PROF_NAMES[plan.prof], plan.start, plan.target))
     add()
-    add(("%sStep 1|r - Run a full scan with Auctionator to get the latest prices. Using your latest scan, it will cost about %s%s|r to level."):format(
-        YEL, WHT, Money(base.totals.net)))
+    add(YEL .. "Step 1|r - Run a full scan with Auctionator to get the latest prices.")
+    add(("Using your latest scan, it will cost about %s%s|r to level."):format(WHT, Money(base.totals.net)))
     add()
     add(YEL .. "Step 2|r - Optional Recipes" .. R)
     if #lookFor == 0 then
@@ -109,6 +109,7 @@ local function render(plan)
         add(GRY .. "These recipes aren't listed on the AH, but could save you some money if you obtained them. The gold amount next to the recipe is the approximate amount you would save if you got the recipe for free." .. R)
         add()
         add(GRY .. "Look these up on wowhead and decide if it's worth traveling to a vendor or farming a drop. Tick off the ones you plan to obtain to update the plan." .. R)
+        add()
         for _, m in ipairs(lookFor) do
             local key = ns.RecipeKey(m.rec)
             local gain = not m.gain and "" or (m.gain >= 1e9 and "fills a gap" or ("saves ~" .. Money(m.gain)))
@@ -125,7 +126,9 @@ local function render(plan)
                 end
             end
             local learn = m.rec.req or m.rec.k[1]
-            add(("%s - %s%s  %slearn at %s%s%s"):format(Name(m.rec.book), gain, rep, GRY, tostring(learn or "?"), R, unused), nil, {
+            local title = m.rec.book and Name(m.rec.book)
+                or (m.rec.n .. GRY .. " (not taught by trainers: quest, specialization or other)" .. R)
+            add(("%s - %s%s  %slearn at %s%s%s"):format(title, gain, rep, GRY, tostring(learn or "?"), R, unused), nil, {
                 checked = planned[key] and true or false,
                 onClick = function(checked)
                     planned[key] = checked or nil
@@ -138,12 +141,14 @@ local function render(plan)
     local nPlanned = 0
     for _ in pairs(usedPlanned) do nPlanned = nPlanned + 1 end
     local saved = nPlanned > 0 and (GRN .. ("  (saves %s)"):format(Money(base.totals.net - t.net)) .. R) or ""
-    add(("%sStep 3|r - Updated cost using optional recipes: %s%s|r%s"):format(YEL, WHT, Money(t.net), saved))
+    add(YEL .. "Step 3|r - Shopping List" .. R)
+    add(("Updated cost using optional recipes: %s%s|r%s"):format(WHT, Money(t.net), saved))
+    add()
+    add(("%smaterials: AH %s + vendor %s, recipes %s, minus sales %s%s"):format(
+        GRY, Money(t.ah), Money(t.vendor), Money(t.recipes), Money(t.sale), R))
     if nPlanned > 0 then
         add(GRY .. "Steps using a ticked recipe are marked " .. BLU .. "*" .. GRY .. ". Have the recipe by its step." .. R)
     end
-    add(("%s  materials: AH %s + vendor %s, recipes %s, minus sales %s%s"):format(
-        GRY, Money(t.ah), Money(t.vendor), Money(t.recipes), Money(t.sale), R))
 
     if plan.knownCount == 0 and ns.CharSkill(plan.prof) then
         add(ORA .. "Open your " .. ns.PROF_NAMES[plan.prof] .. " window once so known recipes count as free." .. R)
@@ -156,14 +161,14 @@ local function render(plan)
     end
     add()
 
-    add(YEL .. "Shopping list" .. R)
     local purchase = {}
     for _, a in ipairs(plan.acquire) do
         if a.how == "AH" or a.how == "vendor" then purchase[#purchase + 1] = a end
     end
     if #purchase > 0 then
-        add(WHT .. "Recipes" .. R)
+        add(YEL .. "Recipes" .. R)
         add(GRY .. "Prices are current AH price. Check wowhead for vendor price/location and feel free to travel to the vendor if it's worth the cost savings." .. R)
+        add()
         for _, a in ipairs(purchase) do
             local note = a.how == "vendor" and (GRY .. " (vendor price you've seen)" .. R) or ""
             add(("  %3d  %s  %s%s"):format(a.learn, Name(a.rec.book), Money(a.cost), note))
@@ -171,8 +176,9 @@ local function render(plan)
         add()
     end
 
-    add(WHT .. "Materials" .. R)
+    add(YEL .. "Materials" .. R)
     add(GRY .. "If the total cost you see on the AH is much different than this table, rescan the AH." .. R)
+    add()
     local C1, C2, C3, C4 = 0, 300, 390, 490
     addCols({
         { YEL .. "Item" .. R, C1, 290, "LEFT" }, { YEL .. "Quantity" .. R, C2, 80, "RIGHT" },
@@ -219,7 +225,10 @@ local function render(plan)
     while RANK_CAPS[capIdx] and RANK_CAPS[capIdx] <= plan.start do capIdx = capIdx + 1 end
     for _, st in ipairs(plan.steps) do
         while RANK_CAPS[capIdx] and st.to > RANK_CAPS[capIdx] do
-            add(("  %s-- train the next rank before %d --%s"):format(BLU, RANK_CAPS[capIdx], R))
+            local td = ns.Data.trainerData and ns.Data.trainerData[plan.prof]
+            local at = td and td.ranks[capIdx]
+            local when = at and (" (learnable at " .. at .. ")") or ""
+            add(("  %s-- train the next rank%s before %d --%s"):format(BLU, when, RANK_CAPS[capIdx], R))
             capIdx = capIdx + 1
         end
         local greenTxt = st.green and (GRN .. " (green)" .. R) or ""

@@ -9,6 +9,7 @@
 
 Core.lua
 Data\Recipes.lua
+Data\TrainerData.lua
 Data\VendorSeed.lua
 Prices.lua
 Scan.lua

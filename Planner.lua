@@ -37,12 +37,26 @@ function Planner.Chance(rec, skill)
     return (gr - skill) / (gr - y)
 end
 
+-- Trainer info shipped with the addon (Data/TrainerData.lua): skill to learn rec, or nil.
+function Planner.ShippedTrainer(prof, rec)
+    local td = ns.Data.trainerData and ns.Data.trainerData[prof]
+    return td and td.recipes[rec.n]
+end
+
+local function trainerComplete(prof)
+    local td = ns.Data.trainerData and ns.Data.trainerData[prof]
+    return td and td.complete
+end
+
 -- Skill needed to learn, and whether that number is exact.
+-- Order: your own trainer scans, trainer data shipped with the addon, the recipe data, a guess.
 function Planner.LearnLevel(prof, rec)
-    if rec.k[1] then return rec.k[1], true end
     local t = ns.db.trainer[prof] and ns.db.trainer[prof][ns.RecipeKey(rec)]
     if t and t.skill then return t.skill, true end
-    -- Trainer recipe the trainer window hasn't told us about yet: rough guess.
+    local shipped = Planner.ShippedTrainer(prof, rec)
+    if shipped then return shipped, true end
+    if rec.k[1] then return rec.k[1], true end
+    -- Trainer recipe with no trainer data yet: rough guess.
     return math.max(1, rec.k[2] - 20), false
 end
 
@@ -52,9 +66,16 @@ function Planner.Acquisition(prof, rec, known, planned)
     if known[key] then return 0, "known" end
     if planned and planned[key] then return 0, "planned" end
     if rec.src == "a" then return 0, "auto" end
+    local scanned = ns.db.trainer[prof] and ns.db.trainer[prof][key]
+    if scanned or Planner.ShippedTrainer(prof, rec) then
+        -- taught by a trainer (some recipes that also have a pattern are, in Forever)
+        return (scanned and scanned.cost) or 0, "trainer"
+    end
     if rec.src == "t" then
-        local t = ns.db.trainer[prof] and ns.db.trainer[prof][key]
-        return (t and t.cost) or 0, "trainer"
+        -- No pattern item. With a complete trainer list that doesn't include it, it comes
+        -- from somewhere else (quest, specialization trainer...).
+        if trainerComplete(prof) then return nil, "special" end
+        return 0, "trainer"
     end
     local opts = ns.db.opts
     if rec.rep and not opts.includeRep then return nil, "rep" end
@@ -394,7 +415,7 @@ function Planner.Build(prof, startSkill, target, planned)
             if ctx.acq[rec] then
                 curves[rec] = costCurve(rec)
                 table.insert(paid, rec)
-            elseif ctx.acqHow[rec] == "unpriced" then
+            elseif ctx.acqHow[rec] == "unpriced" or ctx.acqHow[rec] == "special" then
                 table.insert(unpriced, rec)
             end
         end
