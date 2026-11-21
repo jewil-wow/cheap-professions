@@ -227,7 +227,7 @@ local function render(plan)
     addCols({
         { YEL .. "Skill" .. R, S1, 50, "LEFT" }, { YEL .. "Craft" .. R, S2, 155, "LEFT" },
         { YEL .. "# Crafts" .. R, S3, 45, "RIGHT" }, { YEL .. "Total Mats" .. R, S4 + 8, 220, "LEFT" },
-        { YEL .. "Vendor/Keep" .. R, S5, 98, "LEFT" },
+        { YEL .. "Keep/Sell" .. R, S5, 98, "LEFT" },
     })
 
     -- "Light Leather (40), Silken Thread (10)": materials for `crafts` crafts of rec.
