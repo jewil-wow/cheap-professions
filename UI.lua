@@ -66,6 +66,7 @@ local MAX_LOOK_FOR = 12
 local function render(plan)
     local L = {}
     local function add(s, tip, check) L[#L + 1] = { text = s or "", tip = tip, check = check } end
+    local function addCols(cols, tip) L[#L + 1] = { text = "", cols = cols, tip = tip } end
     local t = plan.totals
     local base = plan.baseline or plan
     local planned = ns.Planned(plan.prof)
@@ -97,13 +98,14 @@ local function render(plan)
     end
 
     add(("%s%s|r  %d -> %d"):format(YEL, ns.PROF_NAMES[plan.prof], plan.start, plan.target))
+    add()
+    add(("%sStep 1|r - Run a full scan with Auctionator to get the latest prices. Using your latest scan, it will cost about %s%s|r to level."):format(
+        YEL, WHT, Money(base.totals.net)))
+    add()
+    add(YEL .. "Step 2|r - Optional Recipes" .. R)
     if #lookFor == 0 then
-        add(("Expected net cost: %s"):format(Money(t.net)))
+        add(GRY .. "None: no recipe missing from the AH would save you money on this plan." .. R)
     else
-        add(("%sStep 1|r - Plan with recipes you can get now (trainers + patterns with a price): %s"):format(
-            YEL, Money(base.totals.net)))
-        add()
-        add(YEL .. "Step 2|r - Recipes to look for" .. R)
         add(GRY .. "These recipes aren't listed on the AH, but could save you some money if you obtained them. The gold amount next to the recipe is the approximate amount you would save if you got the recipe for free." .. R)
         add()
         add(GRY .. "Look these up on wowhead and decide if it's worth traveling to a vendor or farming a drop. Tick off the ones you plan to obtain to update the plan." .. R)
@@ -131,16 +133,14 @@ local function render(plan)
                 end,
             })
         end
-        add()
-        local n = 0
-        for _ in pairs(usedPlanned) do n = n + 1 end
-        if n > 0 then
-            add(("%sStep 3|r - Your plan, getting the %d ticked recipe(s): %s  %s(saves %s vs step 1)%s"):format(
-                YEL, n, Money(t.net), GRN, Money(base.totals.net - t.net), R))
-            add(GRY .. "Steps using a ticked recipe are marked " .. BLU .. "*" .. GRY .. ". Have the recipe by its step." .. R)
-        else
-            add(YEL .. "Step 3|r - Your plan: " .. Money(t.net) .. GRY .. "  (tick recipes above to include them)" .. R)
-        end
+    end
+    add()
+    local nPlanned = 0
+    for _ in pairs(usedPlanned) do nPlanned = nPlanned + 1 end
+    local saved = nPlanned > 0 and (GRN .. ("  (saves %s)"):format(Money(base.totals.net - t.net)) .. R) or ""
+    add(("%sStep 3|r - Updated cost using optional recipes: %s%s|r%s"):format(YEL, WHT, Money(t.net), saved))
+    if nPlanned > 0 then
+        add(GRY .. "Steps using a ticked recipe are marked " .. BLU .. "*" .. GRY .. ". Have the recipe by its step." .. R)
     end
     add(("%s  materials: AH %s + vendor %s, recipes %s, minus sales %s%s"):format(
         GRY, Money(t.ah), Money(t.vendor), Money(t.recipes), Money(t.sale), R))
@@ -149,19 +149,20 @@ local function render(plan)
         add(ORA .. "Open your " .. ns.PROF_NAMES[plan.prof] .. " window once so known recipes count as free." .. R)
     end
     if plan.estimatedLearn > 0 then
-        add(ORA .. plan.estimatedLearn .. " trainer recipe(s) marked ~ in Steps have estimated learn levels. Open the trainer to make them exact." .. R)
+        add(ORA .. plan.estimatedLearn .. " trainer recipe(s) marked ~ in Step 4 have estimated learn levels. Open the trainer to make them exact." .. R)
     end
     if #plan.gaps > 0 then
         add(RED .. ("No usable recipe for %d skill point(s), first at %d (missing prices or recipes)."):format(#plan.gaps, plan.gaps[1]) .. R)
     end
     add()
 
+    add(YEL .. "Shopping list" .. R)
     local purchase = {}
     for _, a in ipairs(plan.acquire) do
         if a.how == "AH" or a.how == "vendor" then purchase[#purchase + 1] = a end
     end
     if #purchase > 0 then
-        add(YEL .. "Recipes to Purchase" .. R)
+        add(WHT .. "Recipes" .. R)
         add(GRY .. "Prices are current AH price. Check wowhead for vendor price/location and feel free to travel to the vendor if it's worth the cost savings." .. R)
         for _, a in ipairs(purchase) do
             local note = a.how == "vendor" and (GRY .. " (vendor price you've seen)" .. R) or ""
@@ -170,38 +171,46 @@ local function render(plan)
         add()
     end
 
-    add(YEL .. "Shopping list" .. R .. GRY .. "  (scarce items first, buy these before the rest)" .. R)
+    add(WHT .. "Materials" .. R)
+    add(GRY .. "If the total cost you see on the AH is much different than this table, rescan the AH." .. R)
+    local C1, C2, C3, C4 = 0, 300, 390, 490
+    addCols({
+        { YEL .. "Item" .. R, C1, 290, "LEFT" }, { YEL .. "Quantity" .. R, C2, 80, "RIGHT" },
+        { YEL .. "Cost per Item" .. R, C3, 95, "RIGHT" }, { YEL .. "Total Cost" .. R, C4, 95, "RIGHT" },
+    })
+    local grand, anyThin, anySeed, anyBags = 0, false, false, false
     for _, row in ipairs(plan.shopping) do
-        local parts = {}
+        local qty = row.ah + row.vendor
+        local total = row.ahCost + row.vendorCost
         local bags = math.floor(row.bags + 1e-6)
-        if bags > 0 then parts[#parts + 1] = GRN .. bags .. " in bags" .. R end
-        if row.ah > 0 then
-            local q = row.ahQty and (" of " .. row.ahQty .. " listed") or " (listed qty unknown)"
-            local age = row.stale and (RED .. " seen " .. row.age .. "d ago" .. R) or ""
-            parts[#parts + 1] = ("AH %d%s @ %s = %s%s"):format(row.ah, q, Money(row.ahPrice), Money(row.ahCost), age)
+        local name = Name(row.item)
+        if row.thin then name = RED .. "! " .. R .. name; anyThin = true end
+        if row.vendor > 0 and row.ah == 0 then name = name .. GRY .. " (vendor)" .. R end
+        if bags > 0 then name = name .. GRN .. (" (+%d from bags)"):format(bags) .. R; anyBags = true end
+        if row.stale then name = name .. RED .. (" seen %dd ago"):format(row.age) .. R end
+        local unit
+        if qty > 0 then
+            unit = total / qty
+        else
+            unit = row.ahPrice or row.vendorPrice or 0
         end
-        if row.vendor > 0 then
-            parts[#parts + 1] = ("vendor %d @ %s%s = %s"):format(row.vendor, row.seed and "~" or "", Money(row.vendorPrice), Money(row.vendorCost))
-        end
-        local flag = row.thin and (RED .. "! " .. R) or "  "
-        add(("%s%s: %s"):format(flag, Name(row.item), table.concat(parts, ", ")))
+        local seed = row.vendor > 0 and row.seed
+        if seed then anySeed = true end
+        grand = grand + total
+        addCols({
+            { name, C1, 290, "LEFT" }, { tostring(qty), C2, 80, "RIGHT" },
+            { (seed and "~" or "") .. Money(unit), C3, 95, "RIGHT" }, { Money(total), C4, 95, "RIGHT" },
+        })
     end
-    add(GRY .. "! = plan needs much of the listed supply; it may be gone. ~ = approximate vendor price." .. R)
+    addCols({ { WHT .. "Total" .. R, C1, 290, "LEFT" }, { WHT .. Money(grand) .. R, C4, 95, "RIGHT" } })
+    local notes = {}
+    if anyThin then notes[#notes + 1] = "! = the plan needs much of what's listed; it may sell out, so buy these first" end
+    if anySeed then notes[#notes + 1] = "~ = approximate vendor price" end
+    if anyBags then notes[#notes + 1] = "items from your bags are free and not counted" end
+    if #notes > 0 then add(GRY .. table.concat(notes, ". ") .. "." .. R) end
     add()
 
-    if #plan.crafted > 0 then
-        add(YEL .. "Crafted materials" .. R .. GRY .. "  (made by you and used in later steps instead of buying)" .. R)
-        for _, c in ipairs(plan.crafted) do
-            local parts = {}
-            if c.inSteps > 1e-6 then parts[#parts + 1] = cnt(c.inSteps) .. " made in skill-up steps" end
-            if c.prep > 1e-6 then parts[#parts + 1] = cnt(c.prep) .. " crafted just before the step that needs them" end
-            add(("  %s: %s; %s used later"):format(Name(c.item), table.concat(parts, ", "),
-                cnt(c.usedLater + c.prep)))
-        end
-        add()
-    end
-
-    add(YEL .. "Steps" .. R .. GRY .. "  (hover a step for its materials and prices)" .. R)
+    add(YEL .. "Step 4|r - Craft" .. GRY .. "  (hover a step for its materials and prices)" .. R)
     local estimated = {}
     for _, a in ipairs(plan.acquire) do
         if not a.exact then estimated[a.rec] = true end
@@ -219,8 +228,13 @@ local function render(plan)
             if m.stock > 0.5 then fromEarlier[#fromEarlier + 1] = cnt(m.stock) .. " " .. Name(item) end
         end
         local earlierTxt = #fromEarlier > 0 and (" + " .. table.concat(fromEarlier, ", ") .. " from earlier steps") or ""
-        add(("  %3d-%-3d  %s%s%s|r x%s%s   %smats %s%s%s"):format(
-            st.from, st.to, WHT, (usedPlanned[st.rec] and (BLU .. "*" .. WHT) or "") .. (estimated[st.rec] and (ORA .. "~" .. WHT) or ""), st.rec.n, cnt(st.crafts), greenTxt,
+        local keepTxt = ""
+        if st.keep and st.keep >= 0.5 then
+            local all = st.keep >= st.made - 0.5
+            keepTxt = ORA .. (all and " - save them all for later steps" or (" - save " .. cnt(st.keep) .. " for later steps")) .. R
+        end
+        add(("  %3d-%-3d  %s%s%s|r x%s%s%s   %smats %s%s%s"):format(
+            st.from, st.to, WHT, (usedPlanned[st.rec] and (BLU .. "*" .. WHT) or "") .. (estimated[st.rec] and (ORA .. "~" .. WHT) or ""), st.rec.n, cnt(st.crafts), greenTxt, keepTxt,
             GRY, Money(st.reagents), earlierTxt, R), stepTip(st))
         local prep = {}
         for item, q in pairs(st.prep) do prep[#prep + 1] = { item = item, q = q } end
@@ -228,7 +242,7 @@ local function render(plan)
         for _, p in ipairs(prep) do
             local g = st.prepGain[p.item] or 0
             local gainTxt = g >= 0.5 and ("~" .. math.floor(g + 0.5) .. " skill-ups") or "no skill-ups"
-            add(("             %sfirst craft %s x %s (%s)%s"):format(GRY, cnt(p.q), Name(p.item), gainTxt, R))
+            add(("             %sfirst craft %s x %s (%s), used in this step%s"):format(GRY, cnt(p.q), Name(p.item), gainTxt, R))
         end
     end
     add()
@@ -304,6 +318,26 @@ local function setLines(lines)
     local y = 0
     for i, line in ipairs(lines) do
         local row = getRow(i)
+        row.cols = row.cols or {}
+        for c = 1, math.max(#row.cols, line.cols and #line.cols or 0) do
+            local col = line.cols and line.cols[c]
+            local fs = row.cols[c]
+            if col then
+                if not fs then
+                    fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    row.cols[c] = fs
+                end
+                fs:ClearAllPoints()
+                fs:SetPoint("TOPLEFT", col[2], 0)
+                fs:SetWidth(col[3])
+                fs:SetJustifyH(col[4])
+                fs:SetWordWrap(false)
+                fs:SetText(col[1])
+                fs:Show()
+            elseif fs then
+                fs:Hide()
+            end
+        end
         local indent = line.check and 20 or 0
         row.fs:ClearAllPoints()
         row.fs:SetPoint("TOPLEFT", indent, line.check and -4 or 0)

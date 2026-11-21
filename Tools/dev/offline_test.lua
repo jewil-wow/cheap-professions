@@ -93,7 +93,13 @@ local tt = {
     AddDoubleLine = function(_, l, r) print("      | " .. strip(l) .. "  ->  " .. strip(r)) end,
 }
 for _, line in ipairs(ns.UI.Render(plan)) do
-    print((line.check and (line.check.checked and "[x] " or "[ ] ") or "") .. strip(line.text))
+    local text = line.text
+    if line.cols then
+        local parts = {}
+        for _, c in ipairs(line.cols) do parts[#parts + 1] = strip(c[1]) end
+        text = table.concat(parts, " | ")
+    end
+    print((line.check and (line.check.checked and "[x] " or "[ ] ") or "") .. strip(text))
     if showTips and line.tip then line.tip(tt) end
 end
 print(("planned in %.0f ms"):format(ms))

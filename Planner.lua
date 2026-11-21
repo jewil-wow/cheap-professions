@@ -511,6 +511,20 @@ function Planner.Build(prof, startSkill, target, planned)
             end
         end
 
+        -- How many of each step's crafts later steps use (oldest crafts used first).
+        local usedLeft = {}
+        for item in pairs(madeTotal) do
+            local st = ctx.supply[item]
+            usedLeft[item] = st and st.usedStock or 0
+        end
+        for _, st in ipairs(steps) do
+            local item = st.rec.i
+            if item and usedLeft[item] and usedLeft[item] > 1e-6 then
+                st.keep = math.min(st.made, usedLeft[item])
+                usedLeft[item] = usedLeft[item] - st.keep
+            end
+        end
+
         -- Recipes to acquire that this plan actually uses (steps and prep crafts).
         local acquire, seen = {}, {}
         local function addAcq(rec)
