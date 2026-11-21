@@ -22,6 +22,22 @@ Until a profession has trainer data, its trainer recipes use estimated learn lev
 
 Open question: the leatherworking list ends with a rank whose requirement showed as `??`.
 
+## Specializations
+Forever still has profession specializations (e.g. leatherworking Dragonscale / Elemental /
+Tribal; blacksmithing Armorsmith / Weaponsmith; engineering Gnomish / Goblin). Right now the
+planner treats every recipe on the trainer list as learnable, including specialization ones.
+
+- [ ] Find out which trainer recipes need which specialization (the trainer window shows
+  "Requires Dragonscale Leatherworking" etc.; Wowhead recipe pages too). For leatherworking
+  the ones to check are: Wolfshead Helm, Gauntlets of the Sea, Dragonscale Gauntlets,
+  Helm of Fire, Feathered Breastplate, Dragonscale Breastplate, Green Dragonscale Gauntlets,
+  Blue Dragonscale Leggings. Don't assume classic's mapping.
+- [ ] Add a per-profession "Specialization" setting (none / one of the specs). Only the
+  chosen spec's recipes count as trainer-learnable; others show under Optional Recipes,
+  marked with the spec they need.
+- [ ] Have the trainer scan record "Requires <specialization>" (GetTrainerServiceAbilityReq)
+  so this data fills in automatically when someone visits a trainer.
+
 ## Crafts worth selling on the AH
 - [ ] Work out the full list of crafted items worth selling on the AH instead of vendoring
   (today only Hillman's Cloak is on it; add more with `/jp ahsell add <item>`).

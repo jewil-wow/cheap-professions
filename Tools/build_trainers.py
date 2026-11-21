@@ -70,6 +70,8 @@ def main():
             continue
         recipes, ranks, complete = parse(os.path.join(src, fn), prof)
         rows = "\n".join(f"        [{lua_str(n)}] = {s}," for n, s in sorted(recipes.items(), key=lambda x: (x[1], x[0])))
+        # ranks in skill order (unknown "??" last), whatever order the paste was in
+        ranks = sorted(ranks, key=lambda r: (r is None, r or 0))
         rank_txt = ", ".join("nil" if r is None else str(r) for r in ranks)
         blocks.append(
             f"D.trainerData.{prof} = {{\n"
