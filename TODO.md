@@ -9,7 +9,6 @@ Leatherworking is done (`Tools/trainer_raw/leatherworking.txt`). Still needed:
 - [ ] Engineering
 - [ ] Tailoring
 - [ ] Cooking
-- [ ] First Aid
 
 For each: open the profession's trainer (one that teaches up to the last rank), copy the
 two lists (services, then the skill each one needs) into

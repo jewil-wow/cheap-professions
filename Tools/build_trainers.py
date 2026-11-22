@@ -26,7 +26,7 @@ import sys
 PROF_NAMES = {
     "alchemy": "Alchemy", "blacksmithing": "Blacksmithing", "enchanting": "Enchanting",
     "engineering": "Engineering", "leatherworking": "Leatherworking", "tailoring": "Tailoring",
-    "cooking": "Cooking", "firstaid": "First Aid",
+    "cooking": "Cooking",
 }
 
 

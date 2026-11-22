@@ -40,10 +40,10 @@ local function applyDefaults(dst, src)
     end
 end
 
-ns.PROFESSIONS = { "alchemy", "blacksmithing", "enchanting", "engineering", "leatherworking", "tailoring", "cooking", "firstaid" }
+ns.PROFESSIONS = { "alchemy", "blacksmithing", "enchanting", "engineering", "leatherworking", "tailoring", "cooking" }
 ns.PROF_NAMES = {
     alchemy = "Alchemy", blacksmithing = "Blacksmithing", enchanting = "Enchanting", engineering = "Engineering",
-    leatherworking = "Leatherworking", tailoring = "Tailoring", cooking = "Cooking", firstaid = "First Aid",
+    leatherworking = "Leatherworking", tailoring = "Tailoring", cooking = "Cooking",
 }
 ns.MAX_SKILL = 300
 

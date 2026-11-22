@@ -8,7 +8,7 @@ local _, ns = ...
 local D = ns.Data
 
 D.skillLines = { alchemy=171, blacksmithing=164, enchanting=333, engineering=202,
-    leatherworking=165, tailoring=197, cooking=185, firstaid=129 }
+    leatherworking=165, tailoring=197, cooking=185 }
 
 D.recipes = {}
 D.recipes["alchemy"] = { -- skill line 171, 178 recipes
@@ -2075,40 +2075,6 @@ D.recipes["cooking"] = { -- skill line 185, 123 recipes
     {i=18254,n="Runn Tum Tuber Surprise",k={275,315,335,355},src="b",book=18267,req=275,rg={18255,1,3713,1}},
     {i=20452,n="Smoked Desert Dumplings",k={nil,325,345,365},src="t",rg={20424,1,3713,1}},
     {i=21023,n="Dirge's Kickin' Chimaerok Chops",k={300,325,345,365},src="b",book=21025,req=300,rg={2692,1,9061,1,8150,1,21024,1}},
-}
-
-D.recipes["firstaid"] = { -- skill line 129, 31 recipes
-    {i=279968,n="First Aid Kit",k={nil,20,20,20},src="t",rg={1251,3,159,1}},
-    {i=1251,n="Linen Bandage",k={1,30,45,60},src="a",rg={2589,1}},
-    {i=2581,n="Heavy Linen Bandage",k={nil,50,75,100},src="t",rg={2589,2}},
-    {i=118,n="Minor Healing Potion",k={nil,55,75,95},src="t",rg={3371,1,2678,1,2447,1}},
-    {i=6452,n="Anti-Venom",k={nil,80,115,150},src="t",rg={1475,1}},
-    {i=3530,n="Wool Bandage",k={nil,80,115,150},src="t",rg={2592,1}},
-    {i=858,n="Lesser Healing Potion",k={nil,85,105,125},src="t",rg={3371,1,2678,2,2450,1}},
-    {i=255716,n="Simple Poultice",k={nil,90,125,160},src="t",rg={3174,1,2678,1,2723,1}},
-    {i=3531,n="Heavy Wool Bandage",k={nil,115,150,185},src="t",rg={2592,2}},
-    {i=255720,n="Woolen Tourniquet",k={nil,120,155,190},src="t",rg={2592,2,2321,2}},
-    {i=6453,n="Strong Anti-Venom",k={130,130,165,200},src="b",book=6454,req=130,rg={1288,1}},
-    {i=929,n="Healing Potion",k={nil,135,155,175},src="t",rg={3372,1,2692,1,2453,1}},
-    {i=279940,n="Toxin Study",k={140,140,140,140},src="b",book=273105,req=140,rg={6452,1,8544,2,4470,2}},
-    {i=6450,n="Silk Bandage",k={nil,150,180,210},src="t",rg={4306,1}},
-    {i=255717,n="Clever Poultice",k={140,160,190,220},src="b",book=255724,req=140,rg={1468,1,3713,1,2686,1}},
-    {i=1710,n="Greater Healing Potion",k={155,175,195,215},src="b",book=255723,req=155,rg={3372,1,2692,3,3357,1}},
-    {i=6451,n="Heavy Silk Bandage",k={180,180,210,240},src="b",book=16112,req=180,rg={4306,2}},
-    {i=8544,n="Mageweave Bandage",k={210,210,240,270},src="b",book=16113,req=210,rg={4338,1}},
-    {i=255721,n="Leather Tourniquet",k={200,220,250,280},src="b",book=255726,req=200,rg={4304,2,4291,2}},
-    {i=255718,n="Superior Poultice",k={210,225,255,285},src="b",book=255727,req=210,rg={7070,1,2692,1,2596,1}},
-    {i=255715,n="Potent Anti-Venom",k={215,230,260,290},src="b",book=255728,req=215,rg={255645,1}},
-    {i=3928,n="Superior Healing Potion",k={215,230,250,270},src="b",book=255725,req=215,rg={8925,1,3713,1,8838,1}},
-    {i=8545,n="Heavy Mageweave Bandage",k={nil,240,270,300},src="t",rg={4338,2}},
-    {i=14529,n="Runecloth Bandage",k={nil,260,290,320},src="t",rg={14047,1}},
-    {i=255722,n="Surgical Tourniquet",k={265,280,310,340},src="b",book=255730,req=265,rg={8170,2,14047,2,8343,2}},
-    {i=14530,n="Heavy Runecloth Bandage",k={nil,290,320,350},src="t",rg={14047,2}},
-    {i=13446,n="Major Healing Potion",k={275,290,310,330},src="b",book=255729,req=275,rg={8925,1,3713,3,13464,1}},
-    {i=255719,n="Powerful Poultice",k={280,295,325,355},src="b",book=255731,req=280,rg={7080,1,2692,1,2594,1}},
-    {i=23684,n="Crystal Infused Bandage",k={nil,300,330,360},src="t",rg={23567,1,14047,10}},
-    {i=279951,n="Plague Doctor's Laboratory",k={300,300,300,300},src="b",book=273118,req=300,rg={4470,2,6453,2,14530,5}},
-    {i=19440,n="Powerful Anti-Venom",k={300,300,330,360},src="b",book=19442,req=300,rep="Honored with Argent Dawn",rg={19441,1}},
 }
 
 -- Names for reagents and recipe items (display fallback before item data is cached).

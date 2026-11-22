@@ -4,7 +4,7 @@
 Usage:
     # 1. download the pages into an empty directory (outside this repo):
     #    for p in alchemy blacksmithing enchanting engineering leatherworking \
-    #             tailoring cooking first-aid; do
+    #             tailoring cooking; do
     #      curl -sL -A "Mozilla/5.0" -o "$DIR/$p.html" \
     #        "https://seemeta.com/en/wow-forever/professions/$p"; sleep 2; done
     # 2. (optional) download client data from wago.tools for craft cooldowns, into another
@@ -34,7 +34,6 @@ PROFESSIONS = [
     ("leatherworking", "leatherworking", 165),
     ("tailoring", "tailoring", 197),
     ("cooking", "cooking", 185),
-    ("first-aid", "firstaid", 129),
 ]
 
 WH = r'href="https://www\.wowhead\.com/forever/(item|spell)=(\d+)"'
@@ -193,7 +192,7 @@ def main():
         f.write("-- rg = {reagentItemID, count, ...}\n")
         f.write("local _, ns = ...\nlocal D = ns.Data\n\n")
         f.write("D.skillLines = { alchemy=171, blacksmithing=164, enchanting=333, engineering=202,\n"
-                "    leatherworking=165, tailoring=197, cooking=185, firstaid=129 }\n\n")
+                "    leatherworking=165, tailoring=197, cooking=185 }\n\n")
         f.write("D.recipes = {}\n")
         f.write("\n".join(blocks))
         f.write("\n-- Names for reagents and recipe items (display fallback before item data is cached).\nD.names = {\n")
