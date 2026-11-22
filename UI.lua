@@ -64,7 +64,11 @@ end
 
 -- Returns a list of { text = string, tip = function(tooltip) or nil }.
 local MAX_LOOK_FOR = 12
-local ROW_W = 590
+local ROW_W = 590 -- width the table columns are designed for; they stretch with the window
+-- Narrowest the window may get: the controls need MIN_W; the plan's tables need about
+-- CONTENT_MIN design pixels at the current zoom (so zooming out allows a narrower window).
+local MIN_W, MIN_H, CONTENT_MIN = 380, 360, 470
+local function minWidth(zoom) return math.max(MIN_W, math.ceil(CONTENT_MIN * zoom) + 42) end
 
 local function render(plan)
     local L = {}
@@ -156,6 +160,7 @@ local function render(plan)
     end
     local function stmt(label, v, color)
         addCols({ { (color or "") .. label .. R, 0, 70, "LEFT" }, { (color or "") .. signed(v) .. R, 70, 110, "RIGHT" } })
+        L[#L].fixed = true
     end
     stmt("AH:", -t.ah)
     stmt("Vendor:", -t.vendor)
@@ -386,7 +391,7 @@ end
 UI.Render = render
 
 ---------------------------------------------------------------------------
-local frame, content, startBox, targetBox
+local frame, content, startBox, targetBox, scroll
 local rows = {}
 local state = { prof = nil, start = nil }
 
@@ -409,7 +414,6 @@ local function getRow(i)
     local row = rows[i]
     if row then return row end
     row = CreateFrame("Button", nil, content)
-    row:SetWidth(ROW_W)
     row.fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.fs:SetJustifyH("LEFT")
     row.check = Skin.Check(row, 14)
@@ -441,10 +445,30 @@ local function getRow(i)
     return row
 end
 
+local lastLines
+-- Column positions are laid out for ROW_W; stretch them to the current width.
+local function scaleCols(cols, k)
+    if k == 1 then return cols end
+    local out = {}
+    for c, col in ipairs(cols) do
+        local x1, x2 = math.floor(col[2] * k + 0.5), math.floor((col[2] + col[3]) * k + 0.5)
+        out[c] = { col[1], x1, x2 - x1, col[4], col[5] }
+    end
+    return out
+end
+
 local function setLines(lines)
+    lastLines = lines
     local y = 0
-    for i, line in ipairs(lines) do
+    local rowW = math.max(200, math.floor(content:GetWidth()))
+    local k = rowW / ROW_W
+    for i, line0 in ipairs(lines) do
         local row = getRow(i)
+        row:SetWidth(rowW)
+        local line = line0
+        if line0.cols then
+            line = setmetatable({ cols = scaleCols(line0.cols, line0.fixed and 1 or k) }, { __index = line0 })
+        end
         row.cols = row.cols or {}
         row.lines = row.lines or {}
         local colH = 0
@@ -476,7 +500,7 @@ local function setLines(lines)
         row.fs:SetTextColor(1, 1, 1)
         row.fs:ClearAllPoints()
         row.fs:SetPoint("TOPLEFT", indent, line.check and -4 or -headTop)
-        row.fs:SetWidth(ROW_W - indent)
+        row.fs:SetWidth(rowW - indent)
         row.fs:SetText(line.text ~= "" and line.text or " ")
         row.tip = line.tip
         if line.check then
@@ -536,26 +560,45 @@ local function setLines(lines)
     end
     for i = #lines + 1, #rows do rows[i]:Hide() end
     content:SetHeight(y + 10)
+    if scroll then scroll:Sync() end
 end
 
 local live = {} -- prof -> plan (with recipe tables), for this session
 local stale = {} -- prof -> reason new data arrived since the plan was made
 
 local tabs = {}
-local scroll
 
 local function build()
     local f = CreateFrame("Frame", "JewilProfFrame", UIParent)
     frame = f
     Skin.Panel(f)
-    f:SetSize(660, 600)
-    f:SetPoint("CENTER")
+    ns.db.window = ns.db.window or {}
+    local win = ns.db.window
+    f:SetSize(win.w or 660, win.h or 600)
+    if win.x and win.y then
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", win.x, win.y)
+    else
+        f:SetPoint("CENTER")
+    end
+    f:SetResizable(true)
+    local function setMinWidth(minW)
+        if f.SetResizeBounds then
+            f:SetResizeBounds(minW, MIN_H, 1600, 1200)
+        elseif f.SetMinResize then
+            f:SetMinResize(minW, MIN_H)
+        end
+        if f:GetWidth() < minW then f:SetWidth(minW) end
+    end
+    local function savePos()
+        win.x, win.y = f:GetLeft(), f:GetTop()
+        win.w, win.h = f:GetWidth(), f:GetHeight()
+    end
     f:SetMovable(true)
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetScript("OnDragStop", function() f:StopMovingOrSizing() savePos() end)
     f:SetFrameStrata("HIGH")
     f:Hide()
     tinsert(UISpecialFrames, "JewilProfFrame")
@@ -579,13 +622,9 @@ local function build()
     close:SetScript("OnClick", function() f:Hide() end)
 
     -- profession tabs
-    local n = #ns.PROFESSIONS
-    local gap, left = 4, 12
-    local tabW = math.floor((660 - 2 * left - (n - 1) * gap) / n)
-    for i, prof in ipairs(ns.PROFESSIONS) do
+    for _, prof in ipairs(ns.PROFESSIONS) do
         local name = ns.PROF_NAMES[prof]:gsub("smithing", "smith"):gsub("working", "work"):gsub("Engineering", "Engineer")
-        local b = Skin.Button(f, name, tabW, 24, "tab")
-        b:SetPoint("TOPLEFT", left + (i - 1) * (tabW + gap), -40)
+        local b = Skin.Button(f, name, 80, 24, "tab")
         b:SetScript("OnClick", function()
             state.prof = prof
             state.start = nil
@@ -650,8 +689,114 @@ local function build()
     div:SetHeight(1)
 
     scroll, content = Skin.Scroll(f, ROW_W)
-    scroll:SetPoint("TOPLEFT", 16, -118)
-    scroll:SetPoint("BOTTOMRIGHT", -26, 12)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 34)
+
+    -- bottom bar: zoom (like a spreadsheet) next to the resize grip
+    local foot = Skin.Tex(f, "BORDER", Skin.EDGE)
+    foot:SetPoint("BOTTOMLEFT", 1, 26)
+    foot:SetPoint("BOTTOMRIGHT", -1, 26)
+    foot:SetHeight(1)
+    local ZOOMS = { 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5 }
+    local zoomIdx
+    local plus = Skin.Button(f, "+", 18, 16)
+    plus:SetPoint("BOTTOMRIGHT", -24, 5)
+    local pct = Skin.Button(f, "100%", 44, 16)
+    pct:SetPoint("RIGHT", plus, "LEFT", -3, 0)
+    local minus = Skin.Button(f, "-", 18, 16)
+    minus:SetPoint("RIGHT", pct, "LEFT", -3, 0)
+    local zlabel = Skin.Label(f, "Zoom", true)
+    zlabel:SetPoint("RIGHT", minus, "LEFT", -6, 0)
+    local function setZoom(i)
+        zoomIdx = math.max(1, math.min(#ZOOMS, i))
+        local z = ZOOMS[zoomIdx]
+        ns.db.window.zoom = z
+        pct:SetText(math.floor(z * 100 + 0.5) .. "%")
+        scroll:SetZoom(z)
+        setMinWidth(minWidth(z))
+        if lastLines then setLines(lastLines) end
+    end
+    plus:SetScript("OnClick", function() setZoom(zoomIdx + 1) end)
+    minus:SetScript("OnClick", function() setZoom(zoomIdx - 1) end)
+    pct:SetScript("OnClick", function() for i, z in ipairs(ZOOMS) do if z == 1 then setZoom(i) end end end)
+    for _, b in ipairs({ minus, pct, plus }) do
+        b:HookScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine("Zoom")
+            GameTooltip:AddLine("Click the percentage to reset to 100%. Ctrl + mouse wheel over the plan also zooms.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        b:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    scroll.OnZoomWheel = function(delta) setZoom(zoomIdx + (delta > 0 and 1 or -1)) end
+    local saved = ns.db.window.zoom or 1
+    zoomIdx = 6
+    for i, z in ipairs(ZOOMS) do if math.abs(z - saved) < 0.01 then zoomIdx = i end end
+
+    -- tabs share the width; the plan re-flows to the new width
+    -- Narrow windows: tabs wrap onto a second row, and Avoid green / Re-plan move below
+    -- the skill boxes.
+    local function layout(w)
+        local n = #ns.PROFESSIONS
+        local gap, left, minTab = 4, 12, 76
+        local perRow = math.max(1, math.min(n, math.floor((w - 2 * left + gap) / (minTab + gap))))
+        local tabRows = math.ceil(n / perRow)
+        perRow = math.ceil(n / tabRows) -- balance the rows
+        local tabW = (w - 2 * left - (perRow - 1) * gap) / perRow
+        for i, prof in ipairs(ns.PROFESSIONS) do
+            local r, c = math.floor((i - 1) / perRow), (i - 1) % perRow
+            tabs[prof]:SetWidth(tabW)
+            tabs[prof]:ClearAllPoints()
+            tabs[prof]:SetPoint("TOPLEFT", left + c * (tabW + gap), -40 - r * 28)
+        end
+        local top = 40 + tabRows * 28 - 4 -- bottom of the tabs
+        local wide = w >= 600
+        label:ClearAllPoints()
+        label:SetPoint("TOPLEFT", 14, -(top + 18))
+        green:ClearAllPoints()
+        refresh:ClearAllPoints()
+        if wide then
+            green:SetPoint("LEFT", targetBox, "RIGHT", 20, 0)
+            refresh:SetPoint("TOPRIGHT", -12, -(top + 13))
+        else
+            green:SetPoint("TOPLEFT", 14, -(top + 18 + 28))
+            refresh:SetPoint("TOPRIGHT", -12, -(top + 13 + 28))
+        end
+        local divY = top + 44 + (wide and 0 or 28)
+        div:ClearAllPoints()
+        div:SetPoint("TOPLEFT", 1, -divY)
+        div:SetPoint("TOPRIGHT", -1, -divY)
+        scroll:SetPoint("TOPLEFT", 16, -(divY + 10))
+        scroll:SetViewWidth(w - 16 - 26)
+    end
+    local reflow = ns.Debounce(0.05, function()
+        layout(f:GetWidth())
+        if lastLines then setLines(lastLines) end
+        scroll.Update()
+    end)
+    f:SetScript("OnSizeChanged", reflow)
+    layout(f:GetWidth())
+    setZoom(zoomIdx)
+
+    -- resize grip (bottom-right corner)
+    local grip = CreateFrame("Button", nil, f)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    local dots = {}
+    for _, d in ipairs({ { 0, 0 }, { 4, 0 }, { 8, 0 }, { 0, 4 }, { 4, 4 }, { 0, 8 } }) do
+        local t = Skin.Tex(grip, "OVERLAY", Skin.GRID)
+        t:SetSize(2, 2)
+        t:SetPoint("BOTTOMRIGHT", -2 - d[1], 2 + d[2])
+        dots[#dots + 1] = t
+    end
+    local function paintGrip(c) for _, t in ipairs(dots) do Skin.Color(t, c) end end
+    grip:SetScript("OnEnter", function() paintGrip(Skin.ACCENT) end)
+    grip:SetScript("OnLeave", function() paintGrip(Skin.GRID) end)
+    grip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseUp", function()
+        f:StopMovingOrSizing()
+        savePos()
+        reflow()
+    end)
 end
 
 -- Builds the plan without your ticked recipes (wizard step 1/2) and, if any are ticked, with them.

@@ -165,13 +165,19 @@ function S.Check(parent, size)
     return c
 end
 
--- Scroll area with mouse wheel and a slim draggable bar on the right.
--- Returns scroll frame and its child (set the child's height; the bar follows).
+-- Scroll area with mouse wheel, a slim draggable bar on the right, and zoom.
+-- Returns the scroll frame and the content frame to put rows in. The content is drawn
+-- at the zoom scale inside an unscaled holder, so scrolling works in screen units.
+-- After changing the content's height call scroll:Sync(); for the view width, SetViewWidth.
 function S.Scroll(parent, width)
     local scroll = CreateFrame("ScrollFrame", nil, parent)
-    local child = CreateFrame("Frame", nil, scroll)
+    local child = CreateFrame("Frame", nil, scroll) -- holder (scroll child, unscaled)
     child:SetSize(width, 10)
     scroll:SetScrollChild(child)
+    local content = CreateFrame("Frame", nil, child)
+    content:SetPoint("TOPLEFT")
+    content:SetSize(width, 10)
+    local zoom, viewW = 1, width
 
     local bar = CreateFrame("Slider", nil, parent)
     bar:SetWidth(6)
@@ -202,10 +208,30 @@ function S.Scroll(parent, width)
     scroll:SetScript("OnScrollRangeChanged", update)
     scroll:SetScript("OnSizeChanged", update)
     scroll:EnableMouseWheel(true)
-    scroll:SetScript("OnMouseWheel", function(_, delta)
+    scroll:SetScript("OnMouseWheel", function(self, delta)
+        if IsControlKeyDown() and self.OnZoomWheel then return self.OnZoomWheel(delta) end
         bar:SetValue(bar:GetValue() - delta * 48)
     end)
     scroll.Update = update
     function scroll:ScrollToTop() bar:SetValue(0) end
-    return scroll, child
+    function scroll:Sync()
+        child:SetHeight(math.max(1, content:GetHeight() * zoom))
+        update()
+    end
+    function scroll:SetViewWidth(w)
+        viewW = w
+        child:SetWidth(w)
+        content:SetWidth(w / zoom)
+    end
+    -- keeps the same part of the content at the top of the view
+    function scroll:SetZoom(z)
+        local top = bar:GetValue() / zoom
+        zoom = z
+        content:SetScale(z)
+        self:SetViewWidth(viewW)
+        self:Sync()
+        bar:SetValue(math.min(top * z, select(2, bar:GetMinMaxValues())))
+    end
+    function scroll:GetZoom() return zoom end
+    return scroll, content
 end
