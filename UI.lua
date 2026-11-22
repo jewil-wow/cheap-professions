@@ -226,7 +226,7 @@ local function render(plan)
         if row.thin then name = RED .. "! " .. R .. name; anyThin = true end
         if row.vendor > 0 and row.ah == 0 then name = name .. GRY .. " (vendor)" .. R end
         if bags > 0 then name = name .. GRN .. (" (+%d from bags)"):format(bags) .. R; anyBags = true end
-        if row.stale then name = name .. RED .. (" seen %dd ago"):format(row.age) .. R end
+        if row.stale then name = name .. RED .. (" price was %dd old when planned"):format(row.age) .. R end
         local unit
         if qty > 0 then
             unit = total / qty
@@ -893,6 +893,20 @@ local function storePlan(prof, plan)
 end
 
 -- Draw the saved plan for the selected profession (no recalculation).
+-- When Auctionator last started an AH scan (full or quick), or nil.
+local function lastScanTime()
+    local st = Auctionator and Auctionator.SavedState
+    if type(st) ~= "table" then return end
+    local t
+    for _, k in ipairs({ "TimeOfLastReplicateScan", "TimeOfLastBrowseScan", "TimeOfLastGetAllScan" }) do
+        if type(st[k]) == "number" and (not t or st[k] > t) then t = st[k] end
+    end
+    return t
+end
+
+-- Redraw when you leave the AH, so a scan you just did shows up in the notice.
+ns.On("AUCTION_HOUSE_CLOSED", function() UI.Refresh() end)
+
 function UI.Refresh()
     if not frame or not frame:IsShown() then return end
     for prof, b in pairs(tabs) do b:SetSelected(prof == state.prof) end
@@ -914,6 +928,11 @@ function UI.Refresh()
         GRY, date("%b %d %H:%M", plan.builtAt or time()), plan.start, R) }
     if stale[state.prof] then
         head[#head + 1] = { text = ORA .. stale[state.prof] .. " Press Re-plan to use it." .. R }
+    end
+    local scanned = lastScanTime()
+    if scanned and plan.builtAt and scanned > plan.builtAt then
+        head[#head + 1] = { text = ("%sYou scanned the AH %s, after this plan was made. Press Re-plan to use the new prices.%s"):format(
+            ORA, date("%b %d %H:%M", scanned), R) }
     end
     head[#head + 1] = { text = "" }
     for i = #head, 1, -1 do table.insert(lines, 1, head[i]) end
