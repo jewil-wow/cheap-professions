@@ -67,19 +67,19 @@ print(("Auctionator realm %q, scan day %d"):format(realm, today))
 local ns = {}
 for _, file in ipairs({ "Core.lua", "Data/Recipes.lua", "Data/TrainerData.lua", "Data/VendorSeed.lua", "Prices.lua", "Scan.lua", "Planner.lua", "Skin.lua", "UI.lua" }) do
     local chunk = assert(loadfile(root .. file))
-    chunk("JewilProf", ns)
+    chunk("CheapProfessions", ns)
 end
 local onEvent = frames[1].scripts.OnEvent
-onEvent(frames[1], "ADDON_LOADED", "JewilProf")
--- JP_OPTS="avoidGreen=false,useBags=true" overrides options
-for k, v in (os.getenv("JP_OPTS") or ""):gmatch("(%w+)=(%w+)") do
+onEvent(frames[1], "ADDON_LOADED", "CheapProfessions")
+-- CP_OPTS="avoidGreen=false,useBags=true" overrides options
+for k, v in (os.getenv("CP_OPTS") or ""):gmatch("(%w+)=(%w+)") do
     ns.db.opts[k] = (v == "true") or (v ~= "false" and tonumber(v)) or false
 end
 
 local t0 = os.clock()
 local target = tonumber(arg[5]) or 300
--- JP_PLANNED="Pattern: Wild Leather Cloak;Pattern: ..." ticks recipes to obtain
-for name in (os.getenv("JP_PLANNED") or ""):gmatch("[^;]+") do
+-- CP_PLANNED="Pattern: Wild Leather Cloak;Pattern: ..." ticks recipes to obtain
+for name in (os.getenv("CP_PLANNED") or ""):gmatch("[^;]+") do
     for _, rec in ipairs(ns.Data.recipes[prof]) do
         if rec.book and ns.Data.names[rec.book] == name then ns.Planned(prof)[ns.RecipeKey(rec)] = true end
     end

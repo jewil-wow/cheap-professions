@@ -1,7 +1,7 @@
 local addonName, ns = ...
 
 ns.Data = {}
-_G.JewilProf = ns -- handy for /dump while developing
+_G.CheapProfessions = ns -- handy for /dump while developing
 
 local DB_DEFAULTS = {
     -- items whose crafted output is valued at AH price (minus cut) instead of vendor price
@@ -48,7 +48,7 @@ ns.PROF_NAMES = {
 ns.MAX_SKILL = 300
 
 function ns.Print(...)
-    print("|cff66ccffJewilProf|r:", ...)
+    print("|cff66ccffCheap Professions|r:", ...)
 end
 
 function ns.RecipeKey(rec)
@@ -107,14 +107,14 @@ end)
 
 ns.On("ADDON_LOADED", function(name)
     if name ~= addonName then return end
-    JewilProfDB = JewilProfDB or {}
-    JewilProfCharDB = JewilProfCharDB or {}
-    applyDefaults(JewilProfDB, DB_DEFAULTS)
-    applyDefaults(JewilProfCharDB, CHAR_DEFAULTS)
-    ns.db, ns.cdb = JewilProfDB, JewilProfCharDB
+    CheapProfessionsDB = CheapProfessionsDB or {}
+    CheapProfessionsCharDB = CheapProfessionsCharDB or {}
+    applyDefaults(CheapProfessionsDB, DB_DEFAULTS)
+    applyDefaults(CheapProfessionsCharDB, CHAR_DEFAULTS)
+    ns.db, ns.cdb = CheapProfessionsDB, CheapProfessionsCharDB
 
     if not ns.db.ahSellSeeded then
-        -- Items known to sell on the AH during levelling. Add more with /jp ahsell add <item>.
+        -- Items known to sell on the AH during levelling. Add more with /cp ahsell add <item>.
         local seed = { ["Hillman's Cloak"] = true }
         for _, list in pairs(ns.Data.recipes) do
             for _, rec in ipairs(list) do
@@ -156,16 +156,16 @@ local function itemFromArg(arg)
 end
 
 local HELP = {
-    "/jp - toggle the planner window",
-    "/jp <profession> [start] [target] - plan a profession (e.g. /jp tailoring 120 250)",
-    "/jp ahsell add|remove <item link, id or name> - value a crafted item at AH price",
-    "/jp ahsell list",
-    "/jp opt bags|books|rep|green on|off - count bag items as free / buy recipes / allow reputation recipes / allow green crafts",
+    "/cp - toggle the planner window",
+    "/cp <profession> [start] [target] - plan a profession (e.g. /cp tailoring 120 250)",
+    "/cp ahsell add|remove <item link, id or name> - value a crafted item at AH price",
+    "/cp ahsell list",
+    "/cp opt bags|books|rep|green on|off - count bag items as free / buy recipes / allow reputation recipes / allow green crafts",
 }
 
-SLASH_JEWILPROF1 = "/jp"
-SLASH_JEWILPROF2 = "/jewilprof"
-SlashCmdList.JEWILPROF = function(msg)
+SLASH_CHEAPPROFESSIONS1 = "/cp"
+SLASH_CHEAPPROFESSIONS2 = "/cheapprof"
+SlashCmdList.CHEAPPROFESSIONS = function(msg)
     msg = strtrim(msg or "")
     local cmd, rest = msg:match("^(%S*)%s*(.-)$")
     cmd = cmd:lower()
@@ -189,7 +189,7 @@ SlashCmdList.JEWILPROF = function(msg)
     elseif cmd == "opt" then
         local name, val = rest:match("^(%S+)%s+(%S+)$")
         local map = { bags = "useBags", books = "includeBooks", rep = "includeRep", green = "avoidGreen" }
-        if not (name and map[name:lower()]) then return ns.Print("Usage: /jp opt bags|books|rep|green on|off") end
+        if not (name and map[name:lower()]) then return ns.Print("Usage: /cp opt bags|books|rep|green on|off") end
         local on = val:lower() == "on"
         if name:lower() == "green" then on = not on end -- "green on" = allow green crafts
         ns.db.opts[map[name:lower()]] = on

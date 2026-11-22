@@ -569,7 +569,7 @@ local stale = {} -- prof -> reason new data arrived since the plan was made
 local tabs = {}
 
 local function build()
-    local f = CreateFrame("Frame", "JewilProfFrame", UIParent)
+    local f = CreateFrame("Frame", "CheapProfessionsFrame", UIParent)
     frame = f
     Skin.Panel(f)
     ns.db.window = ns.db.window or {}
@@ -601,7 +601,7 @@ local function build()
     f:SetScript("OnDragStop", function() f:StopMovingOrSizing() savePos() end)
     f:SetFrameStrata("HIGH")
     f:Hide()
-    tinsert(UISpecialFrames, "JewilProfFrame")
+    tinsert(UISpecialFrames, "CheapProfessionsFrame")
 
     -- title bar
     local bar = CreateFrame("Frame", nil, f)
@@ -616,7 +616,7 @@ local function build()
     accentDot:SetPoint("LEFT", 10, 0)
     local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("LEFT", accentDot, "RIGHT", 8, 0)
-    title:SetText(WHT .. "Jewil" .. R .. ACC .. "Prof" .. R .. GRY .. "   cheapest levelling" .. R)
+    title:SetText(WHT .. "Cheap " .. R .. ACC .. "Professions" .. R .. GRY .. "   cheapest levelling" .. R)
     local close = Skin.CloseButton(bar)
     close:SetPoint("RIGHT", -5, 0)
     close:SetScript("OnClick", function() f:Hide() end)

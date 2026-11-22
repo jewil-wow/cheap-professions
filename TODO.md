@@ -1,4 +1,4 @@
-# JewilProf TODO
+# Cheap Professions TODO
 
 ## Trainer data for the other professions
 Leatherworking is done (`Tools/trainer_raw/leatherworking.txt`). Still needed:
@@ -39,7 +39,7 @@ planner treats every recipe on the trainer list as learnable, including speciali
 
 ## Crafts worth selling on the AH
 - [ ] Work out the full list of crafted items worth selling on the AH instead of vendoring
-  (today only Hillman's Cloak is on it; add more with `/jp ahsell add <item>`).
+  (today only Hillman's Cloak is on it; add more with `/cp ahsell add <item>`).
   Ideas: compare AH price (minus cut) to vendor price for every craft in the levelling
   plans, require enough recent listings/sales that it actually sells, and seed the
   defaults in `Core.lua` (`ahSell` seed list).

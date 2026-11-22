@@ -1,0 +1,23 @@
+# Python bytecode (from running the Tools/*.py build scripts)
+__pycache__/
+*.py[cod]
+
+# Local exports/dumps from the dev tools (e.g. Auctionator data converted for offline tests)
+Tools/dev/*.out
+Tools/dev/auc_*.lua
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backups
+*.bak
+*.orig
+
+# Personal Claude Code settings
+.claude/settings.local.json
