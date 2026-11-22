@@ -9,6 +9,8 @@ local Name = function(id) return ns.Prices.ItemName(id) end
 
 local RED, YEL, GRY, GRN, ORA, BLU, WHT = "|cffff5555", "|cffffd100", "|cff999999", "|cff55ff55", "|cffff8040", "|cff66ccff", "|cffffffff"
 local R = "|r"
+local Skin = ns.Skin
+local ACC = Skin.Hex(Skin.ACCENT)
 
 local RANK_CAPS = { 75, 150, 225 }
 
@@ -67,6 +69,7 @@ local ROW_W = 590
 local function render(plan)
     local L = {}
     local function add(s, tip, check) L[#L + 1] = { text = s or "", tip = tip, check = check } end
+    local function heading(s, kind) L[#L + 1] = { text = s, heading = kind or true } end
     -- cols: { text, x, width, justify, wrap }. grid = true draws cell borders ("top" also the top edge).
     local function addCols(cols, tip, grid) L[#L + 1] = { text = "", cols = cols, tip = tip, grid = grid } end
     local t = plan.totals
@@ -99,12 +102,11 @@ local function render(plan)
         for _, m in ipairs(plan.missed) do gainNow[m.rec] = m.gain end
     end
 
-    add(("%s%s|r  %d -> %d"):format(YEL, ns.PROF_NAMES[plan.prof], plan.start, plan.target))
-    add()
-    add(YEL .. "Step 1|r - Run a full scan with Auctionator to get the latest prices, then press Re-plan in the top right.")
+    heading(("%s%s|r  %s%d -> %d|r"):format(WHT, ns.PROF_NAMES[plan.prof], GRY, plan.start, plan.target), "title")
+    heading(ACC .. "Step 1|r - Run a full scan with Auctionator to get the latest prices, then press Re-plan in the top right.")
     add(("Using your latest scan, it will cost about %s%s|r to level."):format(WHT, Money(base.totals.net)))
     add()
-    add(YEL .. "Step 2|r - Optional Recipes" .. R)
+    heading(ACC .. "Step 2|r - Optional Recipes" .. R)
     if #lookFor == 0 then
         add(GRY .. "None: no recipe missing from the AH would save you money on this plan." .. R)
     else
@@ -143,7 +145,7 @@ local function render(plan)
     local nPlanned = 0
     for _ in pairs(usedPlanned) do nPlanned = nPlanned + 1 end
     local saved = nPlanned > 0 and (GRN .. ("  (saves %s)"):format(Money(base.totals.net - t.net)) .. R) or ""
-    add(YEL .. "Step 3|r - Shopping List" .. R)
+    heading(ACC .. "Step 3|r - Shopping List" .. R)
     add(("Updated cost using optional recipes: %s%s|r%s"):format(WHT, Money(t.net), saved))
     add()
     -- Statement-style breakdown: costs negative, sales positive, amounts right-aligned.
@@ -243,7 +245,7 @@ local function render(plan)
     if #notes > 0 then add(GRY .. table.concat(notes, ". ") .. "." .. R) end
     add()
 
-    add(YEL .. "Step 4|r - Craft" .. GRY .. "  (hover a step for its materials and prices)" .. R)
+    heading(ACC .. "Step 4|r - Craft" .. GRY .. "  (hover a step for its materials and prices)" .. R)
     add()
     local estimated = {}
     for _, a in ipairs(plan.acquire) do
@@ -410,15 +412,19 @@ local function getRow(i)
     row:SetWidth(ROW_W)
     row.fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.fs:SetJustifyH("LEFT")
-    row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-    row.check:SetSize(20, 20)
-    row.check:SetPoint("LEFT", -2, 0)
+    row.check = Skin.Check(row, 14)
+    row.check:SetPoint("LEFT", 2, 0)
     row.check:SetScript("OnClick", function(self)
         if self.onClick then self.onClick(self:GetChecked() and true or false) end
     end)
     row.hl = row:CreateTexture(nil, "BACKGROUND")
     row.hl:SetAllPoints()
-    row.hl:SetColorTexture(1, 1, 1, 0.08)
+    Skin.Color(row.hl, Skin.ACCENT, 0.07)
+    row.headBg = Skin.Tex(row, "BACKGROUND", Skin.HEAD, -1) -- table header shading
+    row.div = Skin.Tex(row, "BORDER", Skin.EDGE) -- line under section headings
+    row.div:SetPoint("BOTTOMLEFT", 0, 3)
+    row.div:SetPoint("BOTTOMRIGHT", 0, 3)
+    row.div:SetHeight(1)
     row.hl:Hide()
     row:SetScript("OnEnter", function(self)
         if not self.tip then return end
@@ -463,9 +469,13 @@ local function setLines(lines)
                 fs:Hide()
             end
         end
-        local indent = line.check and 20 or 0
+        local indent = line.check and 22 or 0
+        local headTop = line.heading == "title" and 2 or (line.heading and 8 or 0)
+        row.fs:SetFontObject(line.heading == "title" and GameFontNormalLarge
+            or line.heading and GameFontNormal or GameFontHighlightSmall)
+        row.fs:SetTextColor(1, 1, 1)
         row.fs:ClearAllPoints()
-        row.fs:SetPoint("TOPLEFT", indent, line.check and -4 or 0)
+        row.fs:SetPoint("TOPLEFT", indent, line.check and -4 or -headTop)
         row.fs:SetWidth(ROW_W - indent)
         row.fs:SetText(line.text ~= "" and line.text or " ")
         row.tip = line.tip
@@ -481,10 +491,14 @@ local function setLines(lines)
         if line.cols then
             row.fs:SetText("")
             h = math.max(12, colH) + 2 * PADY + (line.grid and 1 or 4)
+        elseif line.heading then
+            h = row.fs:GetStringHeight() + headTop + 10
         else
             h = math.max(line.check and 20 or 12, row.fs:GetStringHeight() + (line.check and 6 or 0)) + 2
         end
         row:SetHeight(h)
+        row.div:SetShown(line.heading and true or false)
+        row.headBg:SetShown(line.grid == "top")
 
         -- cell borders
         local n = 0
@@ -493,7 +507,7 @@ local function setLines(lines)
             local t = row.lines[n]
             if not t then
                 t = row:CreateTexture(nil, "BORDER")
-                t:SetColorTexture(0.45, 0.45, 0.45, 0.9)
+                Skin.Color(t, Skin.GRID)
                 row.lines[n] = t
             end
             t:ClearAllPoints()
@@ -504,7 +518,12 @@ local function setLines(lines)
         if line.grid and line.cols then
             local last = line.cols[#line.cols]
             local right = last[2] + last[3]
-            if line.grid == "top" then border(0, 0, right, 1) end
+            if line.grid == "top" then
+                border(0, 0, right, 1)
+                row.headBg:ClearAllPoints()
+                row.headBg:SetPoint("TOPLEFT")
+                row.headBg:SetSize(right, h)
+            end
             border(0, h - 1, right, h) -- bottom
             for _, col in ipairs(line.cols) do border(col[2], 0, col[2] + 1, h) end
             border(right - 1, 0, right, h)
@@ -522,13 +541,17 @@ end
 local live = {} -- prof -> plan (with recipe tables), for this session
 local stale = {} -- prof -> reason new data arrived since the plan was made
 
+local tabs = {}
+local scroll
+
 local function build()
-    local ok, f = pcall(CreateFrame, "Frame", "JewilProfFrame", UIParent, "BasicFrameTemplateWithInset")
-    if not ok then f = CreateFrame("Frame", "JewilProfFrame", UIParent, "BackdropTemplate") end
+    local f = CreateFrame("Frame", "JewilProfFrame", UIParent)
     frame = f
-    f:SetSize(660, 580)
+    Skin.Panel(f)
+    f:SetSize(660, 600)
     f:SetPoint("CENTER")
     f:SetMovable(true)
+    f:SetClampedToScreen(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
@@ -536,44 +559,61 @@ local function build()
     f:SetFrameStrata("HIGH")
     f:Hide()
     tinsert(UISpecialFrames, "JewilProfFrame")
-    if f.TitleText then f.TitleText:SetText("JewilProf - cheapest levelling") end
 
+    -- title bar
+    local bar = CreateFrame("Frame", nil, f)
+    bar:SetPoint("TOPLEFT", 1, -1)
+    bar:SetPoint("TOPRIGHT", -1, -1)
+    bar:SetHeight(28)
+    Skin.Tex(bar, "BACKGROUND", Skin.BAR):SetAllPoints()
+    local barLine = Skin.Tex(bar, "BORDER", Skin.EDGE)
+    barLine:SetPoint("BOTTOMLEFT"); barLine:SetPoint("BOTTOMRIGHT"); barLine:SetHeight(1)
+    local accentDot = Skin.Tex(bar, "ARTWORK", Skin.ACCENT)
+    accentDot:SetSize(3, 14)
+    accentDot:SetPoint("LEFT", 10, 0)
+    local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("LEFT", accentDot, "RIGHT", 8, 0)
+    title:SetText(WHT .. "Jewil" .. R .. ACC .. "Prof" .. R .. GRY .. "   cheapest levelling" .. R)
+    local close = Skin.CloseButton(bar)
+    close:SetPoint("RIGHT", -5, 0)
+    close:SetScript("OnClick", function() f:Hide() end)
+
+    -- profession tabs
+    local n = #ns.PROFESSIONS
+    local gap, left = 4, 12
+    local tabW = math.floor((660 - 2 * left - (n - 1) * gap) / n)
     for i, prof in ipairs(ns.PROFESSIONS) do
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        b:SetSize(78, 22)
-        b:SetPoint("TOPLEFT", 12 + (i - 1) * 79, -30)
-        b:SetText((ns.PROF_NAMES[prof]:gsub("smithing", "smith"):gsub("working", "work"):gsub("Engineering", "Engineer")))
+        local name = ns.PROF_NAMES[prof]:gsub("smithing", "smith"):gsub("working", "work"):gsub("Engineering", "Engineer")
+        local b = Skin.Button(f, name, tabW, 24, "tab")
+        b:SetPoint("TOPLEFT", left + (i - 1) * (tabW + gap), -40)
         b:SetScript("OnClick", function()
             state.prof = prof
             state.start = nil
+            scroll:ScrollToTop()
             UI.Refresh() -- shows the saved plan, or builds one if there is none
         end)
+        tabs[prof] = b
     end
 
-    local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("TOPLEFT", 16, -60)
-    label:SetText("Start skill:")
-    startBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    startBox:SetSize(50, 20)
-    startBox:SetPoint("LEFT", label, "RIGHT", 10, 0)
-    startBox:SetAutoFocus(false)
+    -- controls
+    local label = Skin.Label(f, "Start skill", true)
+    label:SetPoint("TOPLEFT", 14, -82)
+    startBox = Skin.EditBox(f, 44, 20)
+    startBox:SetPoint("LEFT", label, "RIGHT", 8, 0)
     startBox:SetNumeric(true)
     startBox:SetScript("OnEnterPressed", function(self)
         state.start = tonumber(self:GetText())
         self:ClearFocus()
         UI.Replan()
     end)
-    local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    local hint = Skin.Label(f, "(blank = current)", true)
+    hint:SetTextColor(0.4, 0.42, 0.45)
     hint:SetPoint("LEFT", startBox, "RIGHT", 6, 0)
-    hint:SetText("(blank = current)")
 
-    local tlabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local tlabel = Skin.Label(f, "Target skill", true)
     tlabel:SetPoint("LEFT", hint, "RIGHT", 20, 0)
-    tlabel:SetText("Target skill:")
-    targetBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-    targetBox:SetSize(50, 20)
-    targetBox:SetPoint("LEFT", tlabel, "RIGHT", 10, 0)
-    targetBox:SetAutoFocus(false)
+    targetBox = Skin.EditBox(f, 44, 20)
+    targetBox:SetPoint("LEFT", tlabel, "RIGHT", 8, 0)
     targetBox:SetNumeric(true)
     targetBox:SetScript("OnEnterPressed", function(self)
         setTarget(state.prof, tonumber(self:GetText()))
@@ -581,10 +621,20 @@ local function build()
         UI.Replan()
     end)
 
-    local refresh = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    refresh:SetSize(90, 22)
-    refresh:SetPoint("TOPRIGHT", -14, -56)
-    refresh:SetText("Re-plan")
+    local green = Skin.Check(f, 14)
+    green:SetPoint("LEFT", targetBox, "RIGHT", 20, 0)
+    local greenLabel = Skin.Label(green, "Avoid green", true)
+    greenLabel:SetPoint("LEFT", green, "RIGHT", 6, 0)
+    green:SetHitRectInsets(0, -(greenLabel:GetStringWidth() + 6), 0, 0)
+    green:SetScript("OnShow", function(self) self:SetChecked(ns.db.opts.avoidGreen) end)
+    green:SetScript("OnClick", function(self)
+        ns.db.opts.avoidGreen = self:GetChecked() and true or false
+        UI.Replan()
+    end)
+    green:SetChecked(ns.db.opts.avoidGreen)
+
+    local refresh = Skin.Button(f, "Re-plan", 90, 22, "primary")
+    refresh:SetPoint("TOPRIGHT", -12, -77)
     refresh:SetScript("OnClick", function()
         -- Use what's in the box only if you changed it; otherwise plan from your current skill.
         local plan = state.prof and live[state.prof]
@@ -594,25 +644,14 @@ local function build()
         UI.Replan()
     end)
 
-    local green = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-    green:SetSize(22, 22)
-    green:SetPoint("LEFT", targetBox, "RIGHT", 14, 0)
-    local greenLabel = green:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    greenLabel:SetPoint("LEFT", green, "RIGHT", 2, 0)
-    greenLabel:SetText("Avoid green")
-    green:SetScript("OnShow", function(self) self:SetChecked(ns.db.opts.avoidGreen) end)
-    green:SetScript("OnClick", function(self)
-        ns.db.opts.avoidGreen = self:GetChecked() and true or false
-        UI.Replan()
-    end)
-    green:SetChecked(ns.db.opts.avoidGreen)
+    local div = Skin.Tex(f, "BORDER", Skin.EDGE)
+    div:SetPoint("TOPLEFT", 1, -108)
+    div:SetPoint("TOPRIGHT", -1, -108)
+    div:SetHeight(1)
 
-    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 12, -86)
-    scroll:SetPoint("BOTTOMRIGHT", -32, 12)
-    content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(ROW_W, 10)
-    scroll:SetScrollChild(content)
+    scroll, content = Skin.Scroll(f, ROW_W)
+    scroll:SetPoint("TOPLEFT", 16, -118)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 12)
 end
 
 -- Builds the plan without your ticked recipes (wizard step 1/2) and, if any are ticked, with them.
@@ -675,6 +714,7 @@ end
 -- Draw the saved plan for the selected profession (no recalculation).
 function UI.Refresh()
     if not frame or not frame:IsShown() then return end
+    for prof, b in pairs(tabs) do b:SetSelected(prof == state.prof) end
     if not state.prof then
         setLines({
             { text = "Pick a profession above." },
