@@ -103,7 +103,7 @@ local function render(plan)
     end
 
     heading(("%s%s|r  %s%d -> %d|r"):format(WHT, ns.PROF_NAMES[plan.prof], GRY, plan.start, plan.target), "title")
-    heading(ACC .. "Step 1|r - Run a full scan with Auctionator to get the latest prices, then press Re-plan in the top right.")
+    heading(ACC .. "Step 1|r - Run a full scan with Auctionator, then press Re-plan in the top right.")
     add(("Using your latest scan, it will cost about %s%s|r to level."):format(WHT, Money(base.totals.net)))
     add()
     heading(ACC .. "Step 2|r - Optional Recipes" .. R)
@@ -729,11 +729,12 @@ function UI.Refresh()
     targetBox:SetText(tostring(plan.target))
     local lines = render(plan)
     local head = {}
-    head[#head + 1] = { text = ("%sPlan made %s from skill %d. It stays fixed until you press Re-plan.%s"):format(
+    head[#head + 1] = { text = ("%sPlan made %s from skill %d.%s"):format(
         GRY, date("%b %d %H:%M", plan.builtAt or time()), plan.start, R) }
     if stale[state.prof] then
         head[#head + 1] = { text = ORA .. stale[state.prof] .. " Press Re-plan to use it." .. R }
     end
+    head[#head + 1] = { text = "" }
     for i = #head, 1, -1 do table.insert(lines, 1, head[i]) end
     setLines(lines)
 end

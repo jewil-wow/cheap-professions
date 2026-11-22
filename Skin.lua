@@ -73,6 +73,8 @@ function S.Button(parent, text, w, h, kind)
         if kind == "primary" then
             color(b.bg, S.ACCENT, hover and 1 or 0.82)
             fs:SetTextColor(0.02, 0.05, 0.04)
+            fs:SetShadowOffset(0, 0)
+            fs:SetShadowColor(0, 0, 0, 0)
         else
             color(b.bg, hover and S.CTRL_HI or S.CTRL)
             b.border:SetColor((hover or b.selected) and S.ACCENT or S.EDGE)
