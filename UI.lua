@@ -202,12 +202,14 @@ local function render(plan)
                 { tostring(a.learn), R1, RW1, "LEFT" }, { Name(a.rec.book), R2, RW2, "LEFT", true },
                 { Money(a.cost) .. note, R3, RW3, "RIGHT", true },
             }, nil, true)
+            L[#L].item = a.rec.book
         end
         add()
     end
 
     add(YEL .. "Materials" .. R)
     add(GRY .. "If the total cost you see on the AH is much different than this table, rescan the AH, then press Re-plan in the top right." .. R)
+    add(GRY .. "Shift-click an item with the AH open to search for it." .. R)
     add()
     local C1, C2, C3, C4 = 0, 290, 380, 485
     local CW1, CW2, CW3, CW4 = 290, 90, 105, 105
@@ -238,6 +240,7 @@ local function render(plan)
             { name, C1, CW1, "LEFT", true }, { tostring(qty), C2, CW2, "RIGHT" },
             { (seed and "~" or "") .. Money(unit), C3, CW3, "RIGHT" }, { Money(total), C4, CW4, "RIGHT" },
         }, nil, true)
+        L[#L].item = row.item
     end
     addCols({
         { WHT .. "Total" .. R, C1, CW1, "LEFT" }, { "", C2, CW2, "RIGHT" },
@@ -337,7 +340,8 @@ local function render(plan)
         if not rec.i then
             fate = GRY .. "-" .. R
         else
-            local sellTo = ns.db.ahSell[rec.i] and "sell on AH" or "vendor"
+            local si = plan.saleInfo and plan.saleInfo[rec.i]
+            local sellTo = si and "sell on AH" or "vendor"
             if row.keep >= row.made - 0.5 then
                 fate = ORA .. "Keep all" .. R
             elseif row.keep >= 0.5 then
@@ -430,7 +434,18 @@ local function getRow(i)
     row.div:SetPoint("BOTTOMRIGHT", 0, 3)
     row.div:SetHeight(1)
     row.hl:Hide()
+    row:SetScript("OnClick", function(self)
+        if self.item and IsShiftKeyDown() then UI.SearchItem(self.item) end
+    end)
     row:SetScript("OnEnter", function(self)
+        if self.item and not self.tip then
+            self.hl:Show()
+            GameTooltip:SetOwner(self, "ANCHOR_CURSOR_RIGHT")
+            if GameTooltip.SetItemByID then GameTooltip:SetItemByID(self.item) else GameTooltip:AddLine(Name(self.item)) end
+            GameTooltip:AddLine("Shift-click to search the AH", 0.4, 0.8, 1)
+            GameTooltip:Show()
+            return
+        end
         if not self.tip then return end
         self.hl:Show()
         GameTooltip:SetOwner(self, "ANCHOR_CURSOR_RIGHT")
@@ -503,6 +518,7 @@ local function setLines(lines)
         row.fs:SetWidth(rowW - indent)
         row.fs:SetText(line.text ~= "" and line.text or " ")
         row.tip = line.tip
+        row.item = line.item
         if line.check then
             row.check:SetChecked(line.check.checked)
             row.check.onClick = line.check.onClick
@@ -561,6 +577,26 @@ local function setLines(lines)
     for i = #lines + 1, #rows do rows[i]:Hide() end
     content:SetHeight(y + 10)
     if scroll then scroll:Sync() end
+end
+
+-- Shift-click on a shopping-list item: same as shift-clicking it in your bags. With the AH
+-- open the game (and Auctionator) search for it; otherwise the link goes into chat.
+function UI.SearchItem(itemID)
+    local GetInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local name, link = GetInfo(itemID)
+    -- Same call a bag shift-click makes; the default AH and Auctionator both search on it.
+    -- Newer clients use ChatFrameUtil.InsertLink (Auctionator hooks only that one there).
+    local insert = (ChatFrameUtil and ChatFrameUtil.InsertLink) or ChatEdit_InsertLink
+    if link and insert then
+        insert(link)
+        return
+    end
+    -- item details not loaded yet: type the name into the default AH search instead
+    local bar = AuctionHouseFrame and AuctionHouseFrame:IsShown() and AuctionHouseFrame.SearchBar
+    if bar and bar.SearchBox then
+        bar.SearchBox:SetText(name or Name(itemID))
+        if bar.StartSearch then bar:StartSearch() end
+    end
 end
 
 local live = {} -- prof -> plan (with recipe tables), for this session

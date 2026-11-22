@@ -28,6 +28,8 @@ function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 function geterrorhandler() return function(e) print("ERROR: " .. tostring(e)) end end
 function debugprofilestop() return os.clock() * 1000 end
 function tinsert(t, v) table.insert(t, v) end
+-- CP_PRELOAD=file.lua runs a file here to add more stubs (e.g. sell prices, TSM_API)
+if os.getenv("CP_PRELOAD") then dofile(os.getenv("CP_PRELOAD")) end
 UISpecialFrames, SlashCmdList, UIParent = {}, {}, {}
 
 -- Auctionator stub backed by exported data ---------------------------------

@@ -125,9 +125,13 @@ end
 function Ctx:SaleOf(item)
     local v = self.itemSale[item]
     if v == nil then
-        local src
-        v, src = ns.Prices.SaleValue(item)
+        local src, info
+        v, src, info = ns.Prices.SaleValue(item)
         self.itemSale[item], self.itemSaleSrc[item] = v, src
+        if info then
+            info.src = src
+            self.itemSaleInfo[item] = info
+        end
     end
     return v, self.itemSaleSrc[item]
 end
@@ -346,7 +350,7 @@ function Planner.Build(prof, startSkill, target, planned)
     local known = ns.cdb.known[prof] or {}
     local ctx = setmetatable({
         prof = prof, supply = {}, makers = {}, allowed = {}, learn = {}, learnExact = {},
-        sale = {}, saleSrc = {}, itemSale = {}, itemSaleSrc = {}, acq = {}, acqHow = {},
+        sale = {}, saleSrc = {}, itemSale = {}, itemSaleSrc = {}, itemSaleInfo = {}, acq = {}, acqHow = {},
     }, Ctx)
 
     local candidates = {}
@@ -642,7 +646,7 @@ function Planner.Build(prof, startSkill, target, planned)
 
         return {
             steps = steps, gaps = gaps, acquire = acquire, shopping = shopping,
-            sales = sales, crafted = craftedList, totals = totals, estimatedLearn = estimated,
+            sales = sales, crafted = craftedList, saleInfo = ctx.itemSaleInfo, totals = totals, estimatedLearn = estimated,
             consumed = ctx.consumed,
         }
     end

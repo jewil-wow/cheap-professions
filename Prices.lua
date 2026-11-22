@@ -58,15 +58,18 @@ local function sellPrice(itemID)
     return sell
 end
 
--- Value received per crafted item: AH price minus cut for items in the
--- ahSell list, otherwise the vendor sell price.
+-- Value received per crafted item: AH price minus cut for items on your AH-sell
+-- list ("ah"), otherwise the vendor sell price ("vendor"). The third value has the
+-- prices behind an AH choice (kept with the plan).
 function Prices.SaleValue(itemID)
     if not itemID then return 0, "none" end
+    local vendor = sellPrice(itemID) or 0
+    local o = ns.db.opts
     if ns.db.ahSell[itemID] then
         local p = Prices.AH(itemID)
-        if p then return math.floor(p * (1 - ns.db.opts.ahCut)), "ah" end
+        if p then return math.floor(p * (1 - o.ahCut)), "ah", { ah = p, vendor = vendor } end
     end
-    return sellPrice(itemID) or 0, "vendor"
+    return vendor, "vendor"
 end
 
 function Prices.ItemName(itemID)
