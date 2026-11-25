@@ -49,6 +49,17 @@ function Planner.ShippedTrainer(prof, rec)
     return td.lower[rec.n:lower()]
 end
 
+-- Specialization a trainer recipe needs ("Gnomish Engineer"...), or nil.
+function Planner.ShippedSpec(prof, rec)
+    local td = ns.Data.trainerData and ns.Data.trainerData[prof]
+    if not (td and td.specs) then return end
+    if not td.specsLower then
+        td.specsLower = {}
+        for name, spec in pairs(td.specs) do td.specsLower[name:lower()] = spec end
+    end
+    return td.specsLower[rec.n:lower()]
+end
+
 local function trainerComplete(prof)
     local td = ns.Data.trainerData and ns.Data.trainerData[prof]
     return td and td.complete
@@ -72,6 +83,8 @@ function Planner.Acquisition(prof, rec, known, planned)
     if known[key] then return 0, "known" end
     if planned and planned[key] then return 0, "planned" end
     if rec.src == "a" then return 0, "auto" end
+    -- Needs a specialization: not assumed. It shows under Optional Recipes; tick it if you have it.
+    if Planner.ShippedSpec(prof, rec) then return nil, "spec" end
     local scanned = ns.db.trainer[prof] and ns.db.trainer[prof][key]
     if scanned or Planner.ShippedTrainer(prof, rec) then
         -- taught by a trainer (some recipes that also have a pattern are, in Forever)
@@ -435,7 +448,7 @@ function Planner.Build(prof, startSkill, target, planned)
             if ctx.acq[rec] then
                 curves[rec] = costCurve(rec)
                 table.insert(paid, rec)
-            elseif ctx.acqHow[rec] == "unpriced" or ctx.acqHow[rec] == "special" then
+            elseif ctx.acqHow[rec] == "unpriced" or ctx.acqHow[rec] == "special" or ctx.acqHow[rec] == "spec" then
                 table.insert(unpriced, rec)
             end
         end

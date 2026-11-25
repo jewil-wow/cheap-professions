@@ -134,8 +134,16 @@ local function render(plan)
                 end
             end
             local learn = m.rec.req or m.rec.k[1]
-            local title = m.rec.book and Name(m.rec.book)
-                or (m.rec.n .. GRY .. " (not taught by trainers: quest, specialization or other)" .. R)
+            local spec = ns.Planner.ShippedSpec(plan.prof, m.rec)
+            local title
+            if spec then
+                title = m.rec.n .. GRY .. " (trainer, needs " .. spec .. "; tick it if you are one)" .. R
+                learn = ns.Planner.LearnLevel(plan.prof, m.rec)
+            elseif m.rec.book then
+                title = Name(m.rec.book)
+            else
+                title = m.rec.n .. GRY .. " (not taught by trainers: quest or other)" .. R
+            end
             add(("%s - %s%s  %slearn at %s%s%s"):format(title, gain, rep, GRY, tostring(learn or "?"), R, unused), nil, {
                 checked = planned[key] and true or false,
                 onClick = function(checked)

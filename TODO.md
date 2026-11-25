@@ -1,11 +1,9 @@
 # Cheap Professions TODO
 
 ## Trainer data for the other professions
-Leatherworking, Tailoring and Blacksmithing are done (`Tools/trainer_raw/`). Still needed:
+Leatherworking, Tailoring, Blacksmithing, Enchanting and Engineering are done (`Tools/trainer_raw/`). Still needed:
 
 - [ ] Alchemy
-- [ ] Enchanting
-- [ ] Engineering
 - [ ] Cooking
 
 For each: open the profession's trainer (one that teaches up to the last rank), copy the
@@ -21,8 +19,14 @@ Open question: the leatherworking list ends with a rank whose requirement showed
 
 ## Specializations
 Forever still has profession specializations (e.g. leatherworking Dragonscale / Elemental /
-Tribal; blacksmithing Armorsmith / Weaponsmith; engineering Gnomish / Goblin). Right now the
-planner treats every recipe on the trainer list as learnable, including specialization ones.
+Tribal; blacksmithing Armorsmith / Weaponsmith; engineering Gnomish / Goblin).
+
+Done so far: when the trainer list shows a specialization in the requirement ("Engineering Gnomish
+Engineer 240"), the build script records it (`specs` in Data/TrainerData.lua) and the planner doesn't
+count the recipe as learnable; it shows under Optional Recipes as "needs Gnomish Engineer", and you
+tick it if you have that specialization. Engineering is covered this way. The leatherworking and
+blacksmithing pastes showed no specializations, so their spec recipes (if any) are still treated
+as learnable.
 
 - [ ] Find out which trainer recipes need which specialization (the trainer window shows
   "Requires Dragonscale Leatherworking" etc.; Wowhead recipe pages too). For leatherworking
