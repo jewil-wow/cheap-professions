@@ -7,10 +7,11 @@ ns.UI = UI
 local Money = function(c) return ns.Prices.Money(c) end
 local Name = function(id) return ns.Prices.ItemName(id) end
 
-local RED, YEL, GRY, GRN, ORA, BLU, WHT = "|cffff5555", "|cffffd100", "|cff999999", "|cff55ff55", "|cffff8040", "|cff66ccff", "|cffffffff"
+-- Tailwind 400-shades on the neutral theme; MUT (orange) is used for table headers.
+local RED, YEL, GRY, GRN, ORA, BLU, WHT = "|cfff87171", "|cfffbbf24", "|cffa1a1a1", "|cff4ade80", "|cfffb923c", "|cff60a5fa", "|cfffafafa"
+local MUT = ns.Skin.Hex(ns.Skin.HIGHLIGHT)
 local R = "|r"
 local Skin = ns.Skin
-local ACC = Skin.Hex(Skin.ACCENT)
 
 local RANK_CAPS = { 75, 150, 225 }
 
@@ -67,13 +68,16 @@ local MAX_LOOK_FOR = 12
 local ROW_W = 590 -- width the table columns are designed for; they stretch with the window
 -- Narrowest the window may get: the controls need MIN_W; the plan's tables need about
 -- CONTENT_MIN design pixels at the current zoom (so zooming out allows a narrower window).
-local MIN_W, MIN_H, CONTENT_MIN = 380, 360, 470
+local MIN_W, MIN_H, CONTENT_MIN = 380, 360, 500
 local function minWidth(zoom) return math.max(MIN_W, math.ceil(CONTENT_MIN * zoom) + 42) end
 
 local function render(plan)
     local L = {}
     local function add(s, tip, check) L[#L + 1] = { text = s or "", tip = tip, check = check } end
-    local function heading(s, kind) L[#L + 1] = { text = s, heading = kind or true } end
+    -- heading(text, "title") is the page title; heading(text, nil, over, sub) starts a card,
+    -- with a small overline above the title and a muted description below it.
+    local function heading(s, kind, over, sub) L[#L + 1] = { text = s, heading = kind or true, over = over, sub = sub } end
+    local function strong(s) L[#L + 1] = { text = s, strong = true } end
     -- cols: { text, x, width, justify, wrap }. grid = true draws cell borders ("top" also the top edge).
     local function addCols(cols, tip, grid) L[#L + 1] = { text = "", cols = cols, tip = tip, grid = grid } end
     local t = plan.totals
@@ -107,10 +111,10 @@ local function render(plan)
     end
 
     heading(("%s%s|r  %s%d -> %d|r"):format(WHT, ns.PROF_NAMES[plan.prof], GRY, plan.start, plan.target), "title")
-    heading(ACC .. "Step 1|r - Run a full scan with Auctionator, then press Re-plan in the top right.")
+    heading("Scan the auction house", nil, "STEP 1", "Run a full scan with Auctionator, then press Re-plan in the top right.")
     add(("Using your latest scan, it will cost about %s%s|r to level."):format(WHT, Money(base.totals.net)))
     add()
-    heading(ACC .. "Step 2|r - Optional Recipes" .. R)
+    heading("Optional recipes", nil, "STEP 2")
     if #lookFor == 0 then
         add(GRY .. "None: no recipe missing from the AH would save you money on this plan." .. R)
     else
@@ -157,7 +161,7 @@ local function render(plan)
     local nPlanned = 0
     for _ in pairs(usedPlanned) do nPlanned = nPlanned + 1 end
     local saved = nPlanned > 0 and (GRN .. ("  (saves %s)"):format(Money(base.totals.net - t.net)) .. R) or ""
-    heading(ACC .. "Step 3|r - Shopping List" .. R)
+    heading("Shopping list", nil, "STEP 3")
     add(("Updated cost using optional recipes: %s%s|r%s"):format(WHT, Money(t.net), saved))
     add()
     -- Statement-style breakdown: costs negative, sales positive, amounts right-aligned.
@@ -195,14 +199,14 @@ local function render(plan)
         if a.how == "AH" or a.how == "vendor" then purchase[#purchase + 1] = a end
     end
     if #purchase > 0 then
-        add(YEL .. "Recipes" .. R)
+        strong("Recipes")
         add(GRY .. "Prices are current AH price. Check wowhead for vendor price/location and feel free to travel to the vendor if it's worth the cost savings." .. R)
         add()
-        local R1, R2, R3 = 0, 55, 405
-        local RW1, RW2, RW3 = 55, 350, 185
+        local R1, R2, R3 = 0, 62, 412
+        local RW1, RW2, RW3 = 62, 350, 178
         addCols({
-            { YEL .. "Skill" .. R, R1, RW1, "LEFT" }, { YEL .. "Recipe" .. R, R2, RW2, "LEFT" },
-            { YEL .. "Price" .. R, R3, RW3, "RIGHT" },
+            { MUT .. "Skill" .. R, R1, RW1, "LEFT" }, { MUT .. "Recipe" .. R, R2, RW2, "LEFT" },
+            { MUT .. "Price" .. R, R3, RW3, "RIGHT" },
         }, nil, "top")
         for _, a in ipairs(purchase) do
             local note = a.how == "vendor" and (GRY .. " (vendor price you've seen)" .. R) or ""
@@ -215,15 +219,15 @@ local function render(plan)
         add()
     end
 
-    add(YEL .. "Materials" .. R)
+    strong("Materials")
     add(GRY .. "If the total cost you see on the AH is much different than this table, rescan the AH, then press Re-plan in the top right." .. R)
     add(GRY .. "Shift-click an item with the AH open to search for it." .. R)
     add()
     local C1, C2, C3, C4 = 0, 290, 380, 485
     local CW1, CW2, CW3, CW4 = 290, 90, 105, 105
     addCols({
-        { YEL .. "Item" .. R, C1, CW1, "LEFT" }, { YEL .. "Quantity" .. R, C2, CW2, "RIGHT" },
-        { YEL .. "Cost per Item" .. R, C3, CW3, "RIGHT" }, { YEL .. "Total Cost" .. R, C4, CW4, "RIGHT" },
+        { MUT .. "Item" .. R, C1, CW1, "LEFT" }, { MUT .. "Quantity" .. R, C2, CW2, "RIGHT" },
+        { MUT .. "Cost per Item" .. R, C3, CW3, "RIGHT" }, { MUT .. "Total Cost" .. R, C4, CW4, "RIGHT" },
     }, nil, "top")
     local grand, anyThin, anySeed, anyBags = 0, false, false, false
     for _, row in ipairs(plan.shopping) do
@@ -261,19 +265,18 @@ local function render(plan)
     if #notes > 0 then add(GRY .. table.concat(notes, ". ") .. "." .. R) end
     add()
 
-    heading(ACC .. "Step 4|r - Craft" .. GRY .. "  (hover a step for its materials and prices)" .. R)
-    add()
+    heading("Craft", nil, "STEP 4", "Hover a step for its materials and prices.")
     local estimated = {}
     for _, a in ipairs(plan.acquire) do
         if not a.exact then estimated[a.rec] = true end
     end
     -- Cells are edge to edge (x, width) and drawn with borders.
-    local S1, S2, S3, S4, S5 = 0, 55, 215, 270, 490
-    local W1, W2, W3, W4, W5 = 55, 160, 55, 220, 100
+    local S1, S2, S3, S4, S5 = 0, 62, 220, 272, 490
+    local W1, W2, W3, W4, W5 = 62, 158, 52, 218, 100
     addCols({
-        { YEL .. "Skill" .. R, S1, W1, "LEFT" }, { YEL .. "Craft" .. R, S2, W2, "LEFT" },
-        { YEL .. "# Crafts" .. R, S3, W3, "RIGHT" }, { YEL .. "Total Mats" .. R, S4, W4, "LEFT" },
-        { YEL .. "Keep/Sell" .. R, S5, W5, "LEFT" },
+        { MUT .. "Skill" .. R, S1, W1, "LEFT" }, { MUT .. "Craft" .. R, S2, W2, "LEFT" },
+        { MUT .. "Crafts" .. R, S3, W3, "RIGHT" }, { MUT .. "Total Mats" .. R, S4, W4, "LEFT" },
+        { MUT .. "Keep/Sell" .. R, S5, W5, "LEFT" },
     }, nil, "top")
 
     -- One "Light Leather (40)" line per material, for `crafts` crafts of rec.
@@ -390,7 +393,7 @@ local function render(plan)
     add()
 
     if #plan.sales > 0 then
-        add(YEL .. "Sales" .. R .. GRY .. "  (crafted items not needed by later steps)" .. R)
+        strong(WHT .. "Sales" .. R .. GRY .. "  (crafted items not needed by later steps)" .. R)
         for _, r in ipairs(plan.sales) do
             add(("  %s x%s @ %s = %s  %s(%s)%s"):format(Name(r.item), cnt(r.count), Money(r.unit), Money(r.value),
                 GRY, r.src == "ah" and "AH" or "vendor", R))
@@ -426,7 +429,7 @@ local function getRow(i)
     local row = rows[i]
     if row then return row end
     row = CreateFrame("Button", nil, content)
-    row.fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.fs = Skin.FontString(row, Skin.Body())
     row.fs:SetJustifyH("LEFT")
     row.check = Skin.Check(row, 14)
     row.check:SetPoint("LEFT", 2, 0)
@@ -434,14 +437,14 @@ local function getRow(i)
         if self.onClick then self.onClick(self:GetChecked() and true or false) end
     end)
     row.hl = row:CreateTexture(nil, "BACKGROUND")
-    row.hl:SetAllPoints()
-    Skin.Color(row.hl, Skin.ACCENT, 0.07)
-    row.headBg = Skin.Tex(row, "BACKGROUND", Skin.HEAD, -1) -- table header shading
-    row.div = Skin.Tex(row, "BORDER", Skin.EDGE) -- line under section headings
-    row.div:SetPoint("BOTTOMLEFT", 0, 3)
-    row.div:SetPoint("BOTTOMRIGHT", 0, 3)
-    row.div:SetHeight(1)
+    Skin.Color(row.hl, Skin.MUTED, 0.6)
     row.hl:Hide()
+    row.over = Skin.FontString(row, Skin.Overline()) -- "STEP 1" above a card title
+    row.over:SetJustifyH("LEFT")
+    row.over:SetTextColor(Skin.HIGHLIGHT[1], Skin.HIGHLIGHT[2], Skin.HIGHLIGHT[3])
+    row.sub = Skin.FontString(row, Skin.Body()) -- description under a card title
+    row.sub:SetJustifyH("LEFT")
+    row.sub:SetTextColor(Skin.DIM[1], Skin.DIM[2], Skin.DIM[3])
     row:SetScript("OnClick", function(self)
         if self.item and IsShiftKeyDown() then UI.SearchItem(self.item) end
     end)
@@ -480,28 +483,71 @@ local function scaleCols(cols, k)
     return out
 end
 
+-- Rounded backgrounds drawn on the content frame (under the rows): one card per step and
+-- one outlined box per table.
+local CARD_PAD, CARD_GAP = 16, 14
+local cardBoxes, tableBoxes = {}, {}
+local function box(pool, i, fill, edge, r, sub)
+    local b = pool[i]
+    if not b then
+        b = Skin.Box(content, fill, edge, r, "BACKGROUND", sub)
+        pool[i] = b
+    end
+    b:Show()
+    return b
+end
+local function place(b, x, y, w, h)
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
+    b:SetPoint("BOTTOMRIGHT", content, "TOPLEFT", x + w, -(y + h))
+end
+
+local function isBlank(line)
+    return line and not line.cols and not line.check and not line.heading and (line.text or "") == ""
+end
+
 local function setLines(lines)
     lastLines = lines
     local y = 0
     local rowW = math.max(200, math.floor(content:GetWidth()))
-    local k = rowW / ROW_W
+    local nCards, nTables = 0, 0
+    local cardTop, tableTop
+    local function closeCard()
+        if not cardTop then return end
+        y = y + CARD_PAD
+        nCards = nCards + 1
+        place(box(cardBoxes, nCards, Skin.CARD, Skin.EDGE, 12, -8), 0, cardTop, rowW, y - cardTop)
+        cardTop = nil
+        y = y + CARD_GAP
+    end
     for i, line0 in ipairs(lines) do
         local row = getRow(i)
-        row:SetWidth(rowW)
+        local card = line0.heading == true
+        if card then
+            closeCard()
+            cardTop = y
+            y = y + CARD_PAD
+        end
+        local x = cardTop and CARD_PAD or 0
+        local rw = rowW - 2 * x
+        local k = rw / ROW_W
+        row:SetWidth(rw)
         local line = line0
         if line0.cols then
             line = setmetatable({ cols = scaleCols(line0.cols, line0.fixed and 1 or k) }, { __index = line0 })
         end
+        local nextLine = lines[i + 1]
+        local cardEnds = cardTop and (not nextLine or nextLine.heading == true)
         row.cols = row.cols or {}
         row.lines = row.lines or {}
         local colH = 0
-        local PADX, PADY = line.grid and 4 or 0, line.grid and 3 or 0
+        local PADX, PADY = line.grid and 10 or 0, line.grid and 7 or 0
         for c = 1, math.max(#row.cols, line.cols and #line.cols or 0) do
             local col = line.cols and line.cols[c]
             local fs = row.cols[c]
             if col then
                 if not fs then
-                    fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    fs = Skin.FontString(row, Skin.Body())
                     row.cols[c] = fs
                 end
                 fs:ClearAllPoints()
@@ -509,6 +555,7 @@ local function setLines(lines)
                 fs:SetWidth(col[3] - 2 * PADX)
                 fs:SetJustifyH(col[4])
                 fs:SetWordWrap(col[5] and true or false)
+                fs:SetFontObject(line.grid == "top" and Skin.Strong() or Skin.Body())
                 fs:SetText(col[1])
                 fs:Show()
                 colH = math.max(colH, fs:GetStringHeight())
@@ -516,15 +563,36 @@ local function setLines(lines)
                 fs:Hide()
             end
         end
-        local indent = line.check and 22 or 0
-        local headTop = line.heading == "title" and 2 or (line.heading and 8 or 0)
-        row.fs:SetFontObject(line.heading == "title" and GameFontNormalLarge
-            or line.heading and GameFontNormal or GameFontHighlightSmall)
-        row.fs:SetTextColor(1, 1, 1)
+        local indent = line.check and 24 or 0
+        local overH = 0
+        if card and line.over then
+            row.over:ClearAllPoints()
+            row.over:SetPoint("TOPLEFT", 0, 0)
+            row.over:SetText(line.over)
+            row.over:Show()
+            overH = row.over:GetStringHeight() + 6
+        else
+            row.over:Hide()
+        end
+        local headTop = line.heading == "title" and 4 or overH
+        row.fs:SetFontObject(line.heading == "title" and Skin.Title()
+            or line.heading and Skin.Heading() or line.strong and Skin.Strong() or Skin.Body())
+        row.fs:SetTextColor(Skin.FG[1], Skin.FG[2], Skin.FG[3])
         row.fs:ClearAllPoints()
         row.fs:SetPoint("TOPLEFT", indent, line.check and -4 or -headTop)
-        row.fs:SetWidth(rowW - indent)
+        row.fs:SetWidth(rw - indent)
         row.fs:SetText(line.text ~= "" and line.text or " ")
+        local subH = 0
+        if card and line.sub then
+            row.sub:ClearAllPoints()
+            row.sub:SetPoint("TOPLEFT", row.fs, "BOTTOMLEFT", 0, -6)
+            row.sub:SetWidth(rw)
+            row.sub:SetText(line.sub)
+            row.sub:Show()
+            subH = row.sub:GetStringHeight() + 6
+        else
+            row.sub:Hide()
+        end
         row.tip = line.tip
         row.item = line.item
         if line.check then
@@ -538,51 +606,62 @@ local function setLines(lines)
         local h
         if line.cols then
             row.fs:SetText("")
-            h = math.max(12, colH) + 2 * PADY + (line.grid and 1 or 4)
+            h = math.max(12, colH) + 2 * PADY + (line.grid and 1 or 6)
+        elseif line.heading == "title" then
+            h = row.fs:GetStringHeight() + headTop + 12
         elseif line.heading then
-            h = row.fs:GetStringHeight() + headTop + 10
+            h = overH + row.fs:GetStringHeight() + subH + 14
+        elseif isBlank(line) and cardEnds then
+            h = 0 -- no trailing gap at the bottom of a card; the card has padding
+        elseif isBlank(line) then
+            h = 10
         else
-            h = math.max(line.check and 20 or 12, row.fs:GetStringHeight() + (line.check and 6 or 0)) + 2
+            h = math.max(line.check and 22 or 14, row.fs:GetStringHeight() + (line.check and 8 or 2)) + 3
         end
         row:SetHeight(h)
-        row.div:SetShown(line.heading and true or false)
-        row.headBg:SetShown(line.grid == "top")
 
-        -- cell borders
+        -- tables: an outlined rounded box, rows split by lines (no column lines)
         local n = 0
-        local function border(x1, y1, x2, y2)
+        local function hline(x1, y1, x2)
             n = n + 1
             local t = row.lines[n]
             if not t then
                 t = row:CreateTexture(nil, "BORDER")
-                Skin.Color(t, Skin.GRID)
+                Skin.Color(t, Skin.EDGE)
                 row.lines[n] = t
             end
             t:ClearAllPoints()
             t:SetPoint("TOPLEFT", row, "TOPLEFT", x1, -y1)
-            t:SetSize(math.max(1, x2 - x1), math.max(1, y2 - y1))
+            t:SetSize(math.max(1, x2 - x1), 1)
             t:Show()
         end
+        row.hl:ClearAllPoints()
         if line.grid and line.cols then
             local last = line.cols[#line.cols]
             local right = last[2] + last[3]
-            if line.grid == "top" then
-                border(0, 0, right, 1)
-                row.headBg:ClearAllPoints()
-                row.headBg:SetPoint("TOPLEFT")
-                row.headBg:SetSize(right, h)
+            local prevGrid = i > 1 and lines[i - 1].grid
+            local nextGrid = nextLine and nextLine.grid
+            if not prevGrid then tableTop = y end
+            if nextGrid then hline(1, h - 1, right - 1) end
+            if not nextGrid then
+                nTables = nTables + 1
+                place(box(tableBoxes, nTables, Skin.CARD, Skin.EDGE, 8, -6), x, tableTop, right, y + h - tableTop)
             end
-            border(0, h - 1, right, h) -- bottom
-            for _, col in ipairs(line.cols) do border(col[2], 0, col[2] + 1, h) end
-            border(right - 1, 0, right, h)
+            row.hl:SetPoint("TOPLEFT", 1, prevGrid and 0 or -1)
+            row.hl:SetPoint("BOTTOMRIGHT", row, "BOTTOMLEFT", right - 1, nextGrid and 1 or 1)
+        else
+            row.hl:SetAllPoints()
         end
-        for k = n + 1, #row.lines do row.lines[k]:Hide() end
+        for k2 = n + 1, #row.lines do row.lines[k2]:Hide() end
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", 0, -y)
+        row:SetPoint("TOPLEFT", x, -y)
         row:Show()
         y = y + h
     end
+    closeCard()
     for i = #lines + 1, #rows do rows[i]:Hide() end
+    for i = nCards + 1, #cardBoxes do cardBoxes[i]:Hide() end
+    for i = nTables + 1, #tableBoxes do tableBoxes[i]:Hide() end
     content:SetHeight(y + 10)
     if scroll then scroll:Sync() end
 end
@@ -651,24 +730,20 @@ local function build()
     local bar = CreateFrame("Frame", nil, f)
     bar:SetPoint("TOPLEFT", 1, -1)
     bar:SetPoint("TOPRIGHT", -1, -1)
-    bar:SetHeight(28)
-    Skin.Tex(bar, "BACKGROUND", Skin.BAR):SetAllPoints()
-    local barLine = Skin.Tex(bar, "BORDER", Skin.EDGE)
-    barLine:SetPoint("BOTTOMLEFT"); barLine:SetPoint("BOTTOMRIGHT"); barLine:SetHeight(1)
-    local accentDot = Skin.Tex(bar, "ARTWORK", Skin.ACCENT)
-    accentDot:SetSize(3, 14)
-    accentDot:SetPoint("LEFT", 10, 0)
-    local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("LEFT", accentDot, "RIGHT", 8, 0)
-    title:SetText(WHT .. "Cheap " .. R .. ACC .. "Professions" .. R)
+    bar:SetHeight(46)
+    local title = Skin.FontString(bar, Skin.Heading())
+    title:SetFontObject(Skin.Font("WindowTitle", "semibold", 15))
+    title:SetPoint("LEFT", 16, -2)
+    title:SetText(WHT .. "Cheap Professions" .. R)
     local close = Skin.CloseButton(bar)
-    close:SetPoint("RIGHT", -5, 0)
+    close:SetPoint("RIGHT", -10, -2)
     close:SetScript("OnClick", function() f:Hide() end)
 
-    -- profession tabs
+    -- profession tabs, on a muted tab list
+    local tabList = Skin.TabList(f)
     for _, prof in ipairs(ns.PROFESSIONS) do
-        local name = ns.PROF_NAMES[prof]:gsub("smithing", "smith"):gsub("working", "work"):gsub("Engineering", "Engineer")
-        local b = Skin.Button(f, name, 80, 24, "tab")
+        local name = ns.PROF_NAMES[prof]
+        local b = Skin.Button(tabList, name, 80, 24, "tab")
         b:SetScript("OnClick", function()
             state.prof = prof
             state.start = nil
@@ -681,7 +756,7 @@ local function build()
     -- controls
     local label = Skin.Label(f, "Start skill", true)
     label:SetPoint("TOPLEFT", 14, -82)
-    startBox = Skin.EditBox(f, 44, 20)
+    startBox = Skin.EditBox(f, 48, 24)
     startBox:SetPoint("LEFT", label, "RIGHT", 8, 0)
     startBox:SetNumeric(true)
     startBox:SetScript("OnEnterPressed", function(self)
@@ -690,12 +765,12 @@ local function build()
         UI.Replan()
     end)
     local hint = Skin.Label(f, "(blank = current)", true)
-    hint:SetTextColor(0.4, 0.42, 0.45)
+    hint:SetTextColor(Skin.FAINT[1], Skin.FAINT[2], Skin.FAINT[3])
     hint:SetPoint("LEFT", startBox, "RIGHT", 6, 0)
 
     local tlabel = Skin.Label(f, "Target skill", true)
     tlabel:SetPoint("LEFT", hint, "RIGHT", 20, 0)
-    targetBox = Skin.EditBox(f, 44, 20)
+    targetBox = Skin.EditBox(f, 48, 24)
     targetBox:SetPoint("LEFT", tlabel, "RIGHT", 8, 0)
     targetBox:SetNumeric(true)
     targetBox:SetScript("OnEnterPressed", function(self)
@@ -716,7 +791,7 @@ local function build()
     end)
     green:SetChecked(ns.db.opts.avoidGreen)
 
-    local refresh = Skin.Button(f, "Re-plan", 90, 22, "primary")
+    local refresh = Skin.Button(f, "Re-plan", 112, 32, "primary", Skin.Font("Primary", "semibold", 14))
     refresh:SetPoint("TOPRIGHT", -12, -77)
     refresh:SetScript("OnClick", function()
         -- Use what's in the box only if you changed it; otherwise plan from your current skill.
@@ -733,21 +808,21 @@ local function build()
     div:SetHeight(1)
 
     scroll, content = Skin.Scroll(f, ROW_W)
-    scroll:SetPoint("BOTTOMRIGHT", -26, 34)
+    scroll:SetPoint("BOTTOMRIGHT", -26, 36)
 
     -- bottom bar: zoom (like a spreadsheet) next to the resize grip
     local foot = Skin.Tex(f, "BORDER", Skin.EDGE)
-    foot:SetPoint("BOTTOMLEFT", 1, 26)
-    foot:SetPoint("BOTTOMRIGHT", -1, 26)
+    foot:SetPoint("BOTTOMLEFT", 14, 30)
+    foot:SetPoint("BOTTOMRIGHT", -14, 30)
     foot:SetHeight(1)
     local ZOOMS = { 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5 }
     local zoomIdx
-    local plus = Skin.Button(f, "+", 18, 16)
-    plus:SetPoint("BOTTOMRIGHT", -24, 5)
-    local pct = Skin.Button(f, "100%", 44, 16)
-    pct:SetPoint("RIGHT", plus, "LEFT", -3, 0)
-    local minus = Skin.Button(f, "-", 18, 16)
-    minus:SetPoint("RIGHT", pct, "LEFT", -3, 0)
+    local plus = Skin.Button(f, "+", 22, 20)
+    plus:SetPoint("BOTTOMRIGHT", -26, 6)
+    local pct = Skin.Button(f, "100%", 48, 20)
+    pct:SetPoint("RIGHT", plus, "LEFT", -4, 0)
+    local minus = Skin.Button(f, "-", 22, 20)
+    minus:SetPoint("RIGHT", pct, "LEFT", -4, 0)
     local zlabel = Skin.Label(f, "Zoom", true)
     zlabel:SetPoint("RIGHT", minus, "LEFT", -6, 0)
     local function setZoom(i)
@@ -781,36 +856,41 @@ local function build()
     -- the skill boxes.
     local function layout(w)
         local n = #ns.PROFESSIONS
-        local gap, left, minTab = 4, 12, 76
-        local perRow = math.max(1, math.min(n, math.floor((w - 2 * left + gap) / (minTab + gap))))
+        local gap, left, pad, minTab, tabH = 2, 14, 4, 116, 32
+        local inner = w - 2 * left - 2 * pad
+        local perRow = math.max(1, math.min(n, math.floor((inner + gap) / (minTab + gap))))
         local tabRows = math.ceil(n / perRow)
         perRow = math.ceil(n / tabRows) -- balance the rows
-        local tabW = (w - 2 * left - (perRow - 1) * gap) / perRow
+        local tabW = (inner - (perRow - 1) * gap) / perRow
         for i, prof in ipairs(ns.PROFESSIONS) do
             local r, c = math.floor((i - 1) / perRow), (i - 1) % perRow
-            tabs[prof]:SetWidth(tabW)
+            tabs[prof]:SetSize(tabW, tabH)
             tabs[prof]:ClearAllPoints()
-            tabs[prof]:SetPoint("TOPLEFT", left + c * (tabW + gap), -40 - r * 28)
+            tabs[prof]:SetPoint("TOPLEFT", tabList, "TOPLEFT", pad + c * (tabW + gap), -pad - r * (tabH + gap))
         end
-        local top = 40 + tabRows * 28 - 4 -- bottom of the tabs
+        local listH = 2 * pad + tabRows * tabH + (tabRows - 1) * gap
+        tabList:ClearAllPoints()
+        tabList:SetPoint("TOPLEFT", left, -46)
+        tabList:SetSize(w - 2 * left, listH)
+        local top = 46 + listH -- bottom of the tabs
         local wide = w >= 600
         label:ClearAllPoints()
-        label:SetPoint("TOPLEFT", 14, -(top + 18))
+        label:SetPoint("TOPLEFT", 16, -(top + 20))
         green:ClearAllPoints()
         refresh:ClearAllPoints()
         if wide then
             green:SetPoint("LEFT", targetBox, "RIGHT", 20, 0)
-            refresh:SetPoint("TOPRIGHT", -12, -(top + 13))
+            refresh:SetPoint("TOPRIGHT", -14, -(top + 9))
         else
-            green:SetPoint("TOPLEFT", 14, -(top + 18 + 28))
-            refresh:SetPoint("TOPRIGHT", -12, -(top + 13 + 28))
+            green:SetPoint("TOPLEFT", 16, -(top + 20 + 32))
+            refresh:SetPoint("TOPRIGHT", -14, -(top + 9 + 32))
         end
-        local divY = top + 44 + (wide and 0 or 28)
+        local divY = top + 50 + (wide and 0 or 32)
         div:ClearAllPoints()
-        div:SetPoint("TOPLEFT", 1, -divY)
-        div:SetPoint("TOPRIGHT", -1, -divY)
-        scroll:SetPoint("TOPLEFT", 16, -(divY + 10))
-        scroll:SetViewWidth(w - 16 - 26)
+        div:SetPoint("TOPLEFT", 14, -divY)
+        div:SetPoint("TOPRIGHT", -14, -divY)
+        scroll:SetPoint("TOPLEFT", 14, -(divY + 12))
+        scroll:SetViewWidth(w - 14 - 26)
     end
     local reflow = ns.Debounce(0.05, function()
         layout(f:GetWidth())
@@ -824,17 +904,17 @@ local function build()
     -- resize grip (bottom-right corner)
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(16, 16)
-    grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    grip:SetPoint("BOTTOMRIGHT", -4, 4)
     local dots = {}
     for _, d in ipairs({ { 0, 0 }, { 4, 0 }, { 8, 0 }, { 0, 4 }, { 4, 4 }, { 0, 8 } }) do
-        local t = Skin.Tex(grip, "OVERLAY", Skin.GRID)
+        local t = Skin.Tex(grip, "OVERLAY", Skin.THUMB)
         t:SetSize(2, 2)
         t:SetPoint("BOTTOMRIGHT", -2 - d[1], 2 + d[2])
         dots[#dots + 1] = t
     end
     local function paintGrip(c) for _, t in ipairs(dots) do Skin.Color(t, c) end end
-    grip:SetScript("OnEnter", function() paintGrip(Skin.ACCENT) end)
-    grip:SetScript("OnLeave", function() paintGrip(Skin.GRID) end)
+    grip:SetScript("OnEnter", function() paintGrip(Skin.DIM) end)
+    grip:SetScript("OnLeave", function() paintGrip(Skin.THUMB) end)
     grip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
     grip:SetScript("OnMouseUp", function()
         f:StopMovingOrSizing()
