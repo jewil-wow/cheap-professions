@@ -171,13 +171,19 @@ local function render(plan)
         return Money(0)
     end
     local function stmt(label, v, color)
-        addCols({ { (color or "") .. label .. R, 0, 70, "LEFT" }, { (color or "") .. signed(v) .. R, 70, 110, "RIGHT" } })
+        addCols({ { (color or "") .. label .. R, 0, 90, "LEFT" }, { (color or "") .. signed(v) .. R, 90, 100, "RIGHT" } })
         L[#L].fixed = true
     end
     stmt("AH:", -t.ah)
     stmt("Vendor:", -t.vendor)
     stmt("Recipes:", -t.recipes)
-    stmt("Sales:", t.sale)
+    -- crafted items left over at the end, split by where they're best sold
+    local ahSales = 0
+    for _, r in ipairs(plan.sales) do
+        if r.src == "ah" then ahSales = ahSales + r.value end
+    end
+    stmt("Vendor sales:", t.sale - ahSales)
+    stmt("AH sales:", ahSales)
     stmt("Net:", -t.net, WHT)
     if nPlanned > 0 then
         add(GRY .. "Steps using a ticked recipe are marked " .. BLU .. "*" .. GRY .. ". Have the recipe by its step." .. R)
@@ -392,15 +398,6 @@ local function render(plan)
     end
     add()
 
-    if #plan.sales > 0 then
-        strong(WHT .. "Sales" .. R .. GRY .. "  (crafted items not needed by later steps)" .. R)
-        for _, r in ipairs(plan.sales) do
-            add(("  %s x%s @ %s = %s  %s(%s)%s"):format(Name(r.item), cnt(r.count), Money(r.unit), Money(r.value),
-                GRY, r.src == "ah" and "AH" or "vendor", R))
-        end
-        add()
-    end
-
     return L
 end
 UI.Render = render
@@ -563,6 +560,14 @@ local function setLines(lines)
                 fs:Hide()
             end
         end
+        -- centre each cell vertically against the row's tallest cell
+        if line.cols then
+            for c, col in ipairs(line.cols) do
+                local fs = row.cols[c]
+                local dy = math.floor((colH - fs:GetStringHeight()) / 2 + 0.5)
+                fs:SetPoint("TOPLEFT", col[2] + PADX, -(PADY + dy))
+            end
+        end
         local indent = line.check and 24 or 0
         local overH = 0
         if card and line.over then
@@ -579,7 +584,11 @@ local function setLines(lines)
             or line.heading and Skin.Heading() or line.strong and Skin.Strong() or Skin.Body())
         row.fs:SetTextColor(Skin.FG[1], Skin.FG[2], Skin.FG[3])
         row.fs:ClearAllPoints()
-        row.fs:SetPoint("TOPLEFT", indent, line.check and -4 or -headTop)
+        if line.check then
+            row.fs:SetPoint("LEFT", indent, 0) -- centred on the row, like the tickbox
+        else
+            row.fs:SetPoint("TOPLEFT", indent, -headTop)
+        end
         row.fs:SetWidth(rw - indent)
         row.fs:SetText(line.text ~= "" and line.text or " ")
         local subH = 0
@@ -616,7 +625,8 @@ local function setLines(lines)
         elseif isBlank(line) then
             h = 10
         else
-            h = math.max(line.check and 22 or 14, row.fs:GetStringHeight() + (line.check and 8 or 2)) + 3
+            h = line.check and math.max(24, row.fs:GetStringHeight() + 10)
+                or math.max(14, row.fs:GetStringHeight() + 2) + 3
         end
         row:SetHeight(h)
 
