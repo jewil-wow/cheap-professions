@@ -38,9 +38,15 @@ function Planner.Chance(rec, skill)
 end
 
 -- Trainer info shipped with the addon (Data/TrainerData.lua): skill to learn rec, or nil.
+-- Names are matched ignoring case (the trainer shows "Double-stitched", the data "Double-Stitched").
 function Planner.ShippedTrainer(prof, rec)
     local td = ns.Data.trainerData and ns.Data.trainerData[prof]
-    return td and td.recipes[rec.n]
+    if not td then return end
+    if not td.lower then
+        td.lower = {}
+        for name, skill in pairs(td.recipes) do td.lower[name:lower()] = skill end
+    end
+    return td.lower[rec.n:lower()]
 end
 
 local function trainerComplete(prof)

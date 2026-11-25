@@ -1,13 +1,11 @@
 # Cheap Professions TODO
 
 ## Trainer data for the other professions
-Leatherworking is done (`Tools/trainer_raw/leatherworking.txt`). Still needed:
+Leatherworking, Tailoring and Blacksmithing are done (`Tools/trainer_raw/`). Still needed:
 
 - [ ] Alchemy
-- [ ] Blacksmithing
 - [ ] Enchanting
 - [ ] Engineering
-- [ ] Tailoring
 - [ ] Cooking
 
 For each: open the profession's trainer (one that teaches up to the last rank), copy the
