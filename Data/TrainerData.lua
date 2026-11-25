@@ -5,6 +5,56 @@ local D = ns.Data
 
 D.trainerData = {}
 
+D.trainerData.alchemy = {
+    complete = true,
+    ranks = { 50, 125, 200, nil }, -- skill needed to train each next rank
+    recipes = {
+        ["Elixir of Minor Strength"] = 15,
+        ["Minor Troll's Blood Elixir"] = 15,
+        ["Mana Well"] = 20,
+        ["Minor Mana Potion"] = 25,
+        ["Cerulean Dye"] = 40,
+        ["Minor Rejuvenation Potion"] = 40,
+        ["Sulfuric Acid"] = 40,
+        ["Elixir of Minor Fortitude"] = 50,
+        ["Minor Discolored Healing Potion"] = 50,
+        ["Blackmouth Oil"] = 80,
+        ["Lesser Discolored Healing Potion"] = 85,
+        ["Draught of Water Breathing"] = 90,
+        ["Elixir of Wisdom"] = 90,
+        ["Swim Speed Potion"] = 100,
+        ["Lesser Mana Potion"] = 120,
+        ["Magenta Dye"] = 120,
+        ["Lesser Troll's Blood Elixir"] = 125,
+        ["Elixir of Lesser Defense"] = 130,
+        ["Fire Oil"] = 130,
+        ["Discolored Healing Potion"] = 135,
+        ["Elixir of Fire Power"] = 140,
+        ["Mana Potion"] = 160,
+        ["Lesser Invisibility Potion"] = 165,
+        ["Elixir of Lesser Fortitude"] = 175,
+        ["Greater Discolored Healing Potion"] = 175,
+        ["Elixir of Agility"] = 185,
+        ["Elixir of Defense"] = 195,
+        ["Catseye Draught"] = 200,
+        ["Greater Mana Potion"] = 205,
+        ["Oil of Immolation"] = 205,
+        ["Draught of Greater Water Breathing"] = 215,
+        ["Viridian Dye"] = 215,
+        ["Transmute: Iron to Gold"] = 225,
+        ["Transmute: Mithril to Truesilver"] = 225,
+        ["Draught of Detect Undead"] = 230,
+        ["Dreamless Sleep Potion"] = 230,
+        ["Superior Discolored Healing Potion"] = 230,
+        ["Arcane Elixir"] = 235,
+        ["Elixir of Greater Intellect"] = 235,
+        ["Elixir of Greater Agility"] = 240,
+        ["Draught of Detect Demon"] = 250,
+        ["Major Discolored Healing Potion"] = 250,
+        ["Stonescale Oil"] = 250,
+    },
+}
+
 D.trainerData.blacksmithing = {
     complete = true,
     ranks = { 50, 125, 200, nil }, -- skill needed to train each next rank

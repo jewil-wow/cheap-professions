@@ -1,10 +1,12 @@
 # Cheap Professions TODO
 
 ## Trainer data for the other professions
-Leatherworking, Tailoring, Blacksmithing, Enchanting and Engineering are done (`Tools/trainer_raw/`). Still needed:
+Leatherworking, Tailoring, Blacksmithing, Enchanting, Engineering and Alchemy are done (`Tools/trainer_raw/`). Still needed:
 
-- [ ] Alchemy
 - [ ] Cooking
+
+Alchemy's trainer also teaches Major Discolored Healing Potion (250), Transmute: Iron to Gold and
+Transmute: Mithril to Truesilver, which aren't in the recipe data, so the planner can't use them.
 
 For each: open the profession's trainer (one that teaches up to the last rank), copy the
 two lists (services, then the skill each one needs) into
