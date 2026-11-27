@@ -1,7 +1,7 @@
 local addonName, ns = ...
 
 ns.Data = {}
-_G.CheapProfessions = ns -- handy for /dump while developing
+_G.jewilUI_ProfessionLeveler = ns -- handy for /dump while developing
 
 local DB_DEFAULTS = {
     -- items whose crafted output is valued at AH price (minus cut) instead of vendor price
@@ -48,7 +48,7 @@ ns.PROF_NAMES = {
 ns.MAX_SKILL = 300
 
 function ns.Print(...)
-    print("|cff66ccffCheap Professions|r:", ...)
+    print("|cff66ccffProfession Leveler|r:", ...)
 end
 
 function ns.RecipeKey(rec)
@@ -107,11 +107,11 @@ end)
 
 ns.On("ADDON_LOADED", function(name)
     if name ~= addonName then return end
-    CheapProfessionsDB = CheapProfessionsDB or {}
-    CheapProfessionsCharDB = CheapProfessionsCharDB or {}
-    applyDefaults(CheapProfessionsDB, DB_DEFAULTS)
-    applyDefaults(CheapProfessionsCharDB, CHAR_DEFAULTS)
-    ns.db, ns.cdb = CheapProfessionsDB, CheapProfessionsCharDB
+    jewilUI_ProfessionLevelerDB = jewilUI_ProfessionLevelerDB or {}
+    jewilUI_ProfessionLevelerCharDB = jewilUI_ProfessionLevelerCharDB or {}
+    applyDefaults(jewilUI_ProfessionLevelerDB, DB_DEFAULTS)
+    applyDefaults(jewilUI_ProfessionLevelerCharDB, CHAR_DEFAULTS)
+    ns.db, ns.cdb = jewilUI_ProfessionLevelerDB, jewilUI_ProfessionLevelerCharDB
 
     if not ns.db.ahSellSeeded then
         -- Items known to sell on the AH during levelling. Add more with /cp ahsell add <item>.
@@ -163,9 +163,9 @@ local HELP = {
     "/cp opt bags|books|rep|green on|off - count bag items as free / buy recipes / allow reputation recipes / allow green crafts",
 }
 
-SLASH_CHEAPPROFESSIONS1 = "/cp"
-SLASH_CHEAPPROFESSIONS2 = "/cheapprof"
-SlashCmdList.CHEAPPROFESSIONS = function(msg)
+SLASH_JEWILUI_PROFESSIONLEVELER1 = "/cp"
+SLASH_JEWILUI_PROFESSIONLEVELER2 = "/cheapprof"
+SlashCmdList.JEWILUI_PROFESSIONLEVELER = function(msg)
     msg = strtrim(msg or "")
     local cmd, rest = msg:match("^(%S*)%s*(.-)$")
     cmd = cmd:lower()

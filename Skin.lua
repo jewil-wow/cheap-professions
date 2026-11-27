@@ -6,7 +6,7 @@ local _, ns = ...
 local S = {}
 ns.Skin = S
 
-local MEDIA = "Interface\\AddOns\\CheapProfessions\\Media\\"
+local MEDIA = "Interface\\AddOns\\jewilUI_ProfessionLeveler\\Media\\"
 
 local function hex(h, a)
     return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255, a or 1 }
@@ -49,7 +49,7 @@ S.FONTS = {
 local fonts = {}
 function S.Font(name, weight, size)
     if fonts[name] then return fonts[name] end
-    local f = CreateFont("CheapProfessionsFont" .. name)
+    local f = CreateFont("jewilUI_ProfessionLevelerFont" .. name)
     -- falls back to the game font if the file can't be loaded (e.g. WoW wasn't restarted)
     if not f:SetFont(S.FONTS[weight], size, "") then
         f:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size - 1, "")

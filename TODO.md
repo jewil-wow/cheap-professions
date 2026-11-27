@@ -1,4 +1,4 @@
-# Cheap Professions TODO
+# Profession Leveler TODO
 
 ## Trainer data for the other professions
 Leatherworking, Tailoring, Blacksmithing, Enchanting, Engineering and Alchemy are done (`Tools/trainer_raw/`). Still needed:

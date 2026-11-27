@@ -1,0 +1,20 @@
+## Interface: 16001
+## Title: |cff6ec8f5jewilUI|r: Profession Leveler
+## IconTexture: Interface\AddOns\jewilUI\media\jewilUI-logo.tga
+## Group: jewilUI
+## Notes: Cheapest profession levelling plan using Auctionator prices.
+## Author: Jewil
+## Version: 0.1.0
+## Dependencies: jewilUI, Auctionator
+## SavedVariables: jewilUI_ProfessionLevelerDB
+## SavedVariablesPerCharacter: jewilUI_ProfessionLevelerCharDB
+
+Core.lua
+Data\Recipes.lua
+Data\TrainerData.lua
+Data\VendorSeed.lua
+Prices.lua
+Scan.lua
+Planner.lua
+Skin.lua
+UI.lua

@@ -69,10 +69,10 @@ print(("Auctionator realm %q, scan day %d"):format(realm, today))
 local ns = {}
 for _, file in ipairs({ "Core.lua", "Data/Recipes.lua", "Data/TrainerData.lua", "Data/VendorSeed.lua", "Prices.lua", "Scan.lua", "Planner.lua", "Skin.lua", "UI.lua" }) do
     local chunk = assert(loadfile(root .. file))
-    chunk("CheapProfessions", ns)
+    chunk("jewilUI_ProfessionLeveler", ns)
 end
 local onEvent = frames[1].scripts.OnEvent
-onEvent(frames[1], "ADDON_LOADED", "CheapProfessions")
+onEvent(frames[1], "ADDON_LOADED", "jewilUI_ProfessionLeveler")
 -- CP_OPTS="avoidGreen=false,useBags=true" overrides options
 for k, v in (os.getenv("CP_OPTS") or ""):gmatch("(%w+)=(%w+)") do
     ns.db.opts[k] = (v == "true") or (v ~= "false" and tonumber(v)) or false

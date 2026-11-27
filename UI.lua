@@ -702,7 +702,7 @@ local stale = {} -- prof -> reason new data arrived since the plan was made
 local tabs = {}
 
 local function build()
-    local f = CreateFrame("Frame", "CheapProfessionsFrame", UIParent)
+    local f = CreateFrame("Frame", "jewilUI_ProfessionLevelerFrame", UIParent)
     frame = f
     Skin.Panel(f)
     ns.db.window = ns.db.window or {}
@@ -734,7 +734,7 @@ local function build()
     f:SetScript("OnDragStop", function() f:StopMovingOrSizing() savePos() end)
     f:SetFrameStrata("HIGH")
     f:Hide()
-    tinsert(UISpecialFrames, "CheapProfessionsFrame")
+    tinsert(UISpecialFrames, "jewilUI_ProfessionLevelerFrame")
 
     -- title bar
     local bar = CreateFrame("Frame", nil, f)
@@ -744,7 +744,7 @@ local function build()
     local title = Skin.FontString(bar, Skin.Heading())
     title:SetFontObject(Skin.Font("WindowTitle", "semibold", 15))
     title:SetPoint("LEFT", 16, -2)
-    title:SetText(WHT .. "Cheap Professions" .. R)
+    title:SetText(WHT .. "Profession Leveler" .. R)
     local close = Skin.CloseButton(bar)
     close:SetPoint("RIGHT", -10, -2)
     close:SetScript("OnClick", function() f:Hide() end)
