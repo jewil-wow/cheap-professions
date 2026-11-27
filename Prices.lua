@@ -48,6 +48,11 @@ function Prices.Bags(itemID)
     return GetItemCount(itemID, true) or 0
 end
 
+-- Copies of an item in bags and bank, regardless of the "count bags" option.
+function Prices.Owned(itemID)
+    return GetItemCount(itemID, true) or 0
+end
+
 local pendingLoad = {}
 local function sellPrice(itemID)
     local sell = select(11, GetItemInfo(itemID))

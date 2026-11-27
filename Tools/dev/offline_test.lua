@@ -67,7 +67,7 @@ print(("Auctionator realm %q, scan day %d"):format(realm, today))
 
 -- Load the addon -----------------------------------------------------------
 local ns = {}
-for _, file in ipairs({ "Core.lua", "Data/Recipes.lua", "Data/TrainerData.lua", "Data/VendorSeed.lua", "Prices.lua", "Scan.lua", "Planner.lua", "Skin.lua", "UI.lua" }) do
+for _, file in ipairs({ "Core.lua", "Data/Recipes.lua", "Data/TrainerData.lua", "Data/VendorSeed.lua", "Data/RequiredTools.lua", "Prices.lua", "Scan.lua", "Planner.lua", "Skin.lua", "UI.lua" }) do
     local chunk = assert(loadfile(root .. file))
     chunk("jewilUI_ProfessionLeveler", ns)
 end

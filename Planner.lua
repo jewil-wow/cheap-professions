@@ -356,6 +356,41 @@ function Ctx:PointCost(rec, s, commit)
     return c - credit, crafts, c, made
 end
 
+-- Materials cost of a single craft of rec at skill s (a required tool). Nothing made goes to stock.
+function Ctx:OneCraft(rec, s, commit)
+    local c = 0
+    local rg = rec.rg
+    for j = 1, #rg, 2 do
+        c = c + self:ReagentCost(rg[j], rg[j + 1], s, 0, commit)
+        if c == INF then return INF end
+    end
+    return c
+end
+
+-- Required tools (Data/RequiredTools.lua) that fall inside this plan, sorted by when they're due.
+local function requiredTools(ctx, prof, startSkill, target, recipes)
+    local defs = ns.Data.requiredTools and ns.Data.requiredTools[prof]
+    local out = {}
+    for _, def in ipairs(defs or {}) do
+        if def.at < target and (not def.minTarget or target >= def.minTarget) then
+            local rec
+            for _, r in ipairs(recipes) do
+                if r.i == def.item then rec = r break end
+            end
+            if rec then
+                local at = math.max(def.at, ctx.learn[rec])
+                out[#out + 1] = {
+                    def = def, rec = rec, item = def.item, boe = def.boe,
+                    at = at, by = math.max(def.by or at, at),
+                    have = ns.Prices.Owned(def.item) > 0,
+                }
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.at < b.at end)
+    return out
+end
+
 ---------------------------------------------------------------------------
 -- Build
 ---------------------------------------------------------------------------
@@ -391,6 +426,22 @@ function Planner.Build(prof, startSkill, target, planned)
             table.insert(candidates, rec)
         end
         if cost == 0 then ctx.allowed[rec] = true end
+    end
+
+    -- Required tools: their recipe is needed whatever the options say (e.g. "buy recipes" off),
+    -- so price a pattern directly when the usual rules excluded it.
+    local tools = requiredTools(ctx, prof, startSkill, target, recipes)
+    for _, t in ipairs(tools) do
+        local rec = t.rec
+        if ctx.acq[rec] == nil and rec.book and ctx.acqHow[rec] ~= "cooldown" then
+            local ah = ns.Prices.AH(rec.book)
+            local v = ns.Prices.Vendor(rec.book)
+            if v and (not ah or v <= ah) then ctx.acq[rec], ctx.acqHow[rec] = v, "vendor"
+            elseif ah then ctx.acq[rec], ctx.acqHow[rec] = ah, "AH"
+            else ctx.acqHow[rec] = "unpriced" end
+        end
+        -- A tool you have to craft means getting its recipe anyway, so levelling may use it too.
+        if not t.have and not t.boe then ctx.allowed[rec] = true end
     end
 
     -- With avoidGreen, a green craft (skill at or above its green threshold) is judged as if
@@ -491,12 +542,14 @@ function Planner.Build(prof, startSkill, target, planned)
         ctx.prepTotal, ctx.prepRec = {}, {}
 
         local steps, gaps, used, madeTotal = {}, {}, {}, {}
+        local toolsOut = {}
         local cur
         -- Skill is tracked as an expected (fractional) value: each step gives one point, and
         -- crafts made just before it ("prep") add their own expected skill-ups.
         local skill = startSkill
-        while skill < target do
-            local s = math.floor(skill)
+
+        -- Cheapest usable recipe for a skill point at s (selection cost).
+        local function bestAt(s)
             local pick, pickCost
             for _, rec in ipairs(usable) do
                 if ctx.learn[rec] <= s and rec.k[4] > s then
@@ -505,71 +558,142 @@ function Planner.Build(prof, startSkill, target, planned)
                     if c < INF and (not pickCost or c < pickCost) then pick, pickCost = rec, c end
                 end
             end
-            local green = pick and isGreen(pick, s)
-            if not pick then
-                table.insert(gaps, s)
-                cur = nil
-                skill = s + 1
-            else
-                ctx.sink, ctx.prep, ctx.prepBatches, ctx.prepInfo = {}, {}, {}, {}
-                local _, crafts, matsCost, made = ctx:PointCost(pick, s, true)
-                local sink, prep, batches, prepInfo = ctx.sink, ctx.prep, ctx.prepBatches, ctx.prepInfo
-                ctx.prepInfo = nil
-                ctx.sink, ctx.prep, ctx.prepBatches = nil, nil, nil
+            return pick, pickCost
+        end
 
-                -- Prep crafts happen first, at the current skill, and may give skill-ups.
-                local prepGain = {}
-                local x = skill
-                for _, b in ipairs(batches) do
-                    local g, left = 0, b.crafts
-                    while left > 1e-9 do
-                        local w = math.min(1, left)
-                        local ch = Planner.Chance(b.rec, math.floor(x + g))
-                        if ch <= 0 then break end
-                        g = g + w * ch
-                        left = left - w
-                    end
-                    if g > 0 then
-                        addTo(prepGain, b.item, g)
-                        x = x + g
-                    end
+        -- Commits one step: `run` spends the materials and returns crafts, materials cost and
+        -- units made. A normal step gives one skill point; a tool craft gives its chance.
+        local function record(pick, s, run, tool)
+            local green = isGreen(pick, s)
+            ctx.sink, ctx.prep, ctx.prepBatches, ctx.prepInfo = {}, {}, {}, {}
+            local crafts, matsCost, made = run()
+            local sink, prep, batches, prepInfo = ctx.sink, ctx.prep, ctx.prepBatches, ctx.prepInfo
+            ctx.prepInfo = nil
+            ctx.sink, ctx.prep, ctx.prepBatches = nil, nil, nil
+
+            -- Prep crafts happen first, at the current skill, and may give skill-ups.
+            local prepGain = {}
+            local x = skill
+            for _, b in ipairs(batches) do
+                local g, left = 0, b.crafts
+                while left > 1e-9 do
+                    local w = math.min(1, left)
+                    local ch = Planner.Chance(b.rec, math.floor(x + g))
+                    if ch <= 0 then break end
+                    g = g + w * ch
+                    left = left - w
                 end
-                local newSkill = math.min(target, x + 1)
-                local newTo = math.max(s + 1, math.floor(newSkill))
-                used[pick] = true
-                if pick.i then addTo(madeTotal, pick.i, made) end
-                if not (cur and cur.rec == pick and cur.to == s) then
-                    cur = {
-                        from = s, to = newTo, rec = pick, crafts = 0, reagents = 0, made = 0,
-                        mats = {}, prep = {}, prepGain = {}, prepInfo = {}, chanceFrom = Planner.Chance(pick, s),
-                    }
-                    table.insert(steps, cur)
+                if g > 0 then
+                    addTo(prepGain, b.item, g)
+                    x = x + g
+                end
+            end
+            local newSkill, newTo
+            if tool then
+                newSkill = math.min(target, x + Planner.Chance(pick, math.floor(x)))
+                newTo = math.max(s, math.floor(newSkill))
+            else
+                newSkill = math.min(target, x + 1)
+                newTo = math.max(s + 1, math.floor(newSkill))
+            end
+            used[pick] = true
+            if pick.i and made > 0 then addTo(madeTotal, pick.i, made) end
+            if tool or not (cur and cur.rec == pick and cur.to == s and not cur.tool) then
+                cur = {
+                    from = s, to = newTo, rec = pick, crafts = 0, reagents = 0, made = 0, tool = tool,
+                    mats = {}, prep = {}, prepGain = {}, prepInfo = {}, chanceFrom = Planner.Chance(pick, s),
+                }
+                table.insert(steps, cur)
+            else
+                cur.to = newTo
+            end
+            for item, g in pairs(prepGain) do addTo(cur.prepGain, item, g) end
+            skill = newSkill
+            cur.chanceTo = Planner.Chance(pick, s)
+            if green and not tool then cur.green = true end
+            for item, r in pairs(sink) do
+                local m = cur.mats[item]
+                if not m then
+                    cur.mats[item] = r
                 else
-                    cur.to = newTo
-                end
-                for item, g in pairs(prepGain) do addTo(cur.prepGain, item, g) end
-                skill = newSkill
-                cur.chanceTo = Planner.Chance(pick, s)
-                if green then cur.green = true end
-                for item, r in pairs(sink) do
-                    local m = cur.mats[item]
-                    if not m then
-                        cur.mats[item] = r
-                    else
-                        for _, k in ipairs({ "qty", "cost", "stock", "bags", "ah", "vendor", "craft" }) do
-                            m[k] = m[k] + r[k]
-                        end
+                    for _, k in ipairs({ "qty", "cost", "stock", "bags", "ah", "vendor", "craft" }) do
+                        m[k] = m[k] + r[k]
                     end
                 end
-                for item, q in pairs(prep) do addTo(cur.prep, item, q) end
-                for item, pi in pairs(prepInfo) do
-                    local c = cur.prepInfo[item] or { qty = 0, crafts = 0, cost = 0, rec = pi.rec }
-                    c.qty, c.crafts, c.cost = c.qty + pi.qty, c.crafts + pi.crafts, c.cost + pi.cost
-                    cur.prepInfo[item] = c
+            end
+            for item, q in pairs(prep) do addTo(cur.prep, item, q) end
+            for item, pi in pairs(prepInfo) do
+                local c = cur.prepInfo[item] or { qty = 0, crafts = 0, cost = 0, rec = pi.rec }
+                c.qty, c.crafts, c.cost = c.qty + pi.qty, c.crafts + pi.crafts, c.cost + pi.cost
+                cur.prepInfo[item] = c
+            end
+            cur.crafts = cur.crafts + crafts
+            cur.reagents = cur.reagents + matsCost
+            cur.made = cur.made + made
+        end
+
+        -- A required tool: already owned, bought (if it can be and that's cheaper), or crafted.
+        local function doTool(t, s)
+            local out = { item = t.item, rec = t.rec, at = s, by = t.by, boe = t.boe,
+                how = ctx.acqHow[t.rec], acqCost = ctx.acq[t.rec] }
+            toolsOut[#toolsOut + 1] = out
+            if t.have then
+                out.action = "have"
+                return
+            end
+            if t.boe then
+                local st = ctx:Supply(t.item)
+                local buyCost, a, v = buySplit(st, 1)
+                local mats = ctx:OneCraft(t.rec, s, false)
+                -- Crafting also gives a skill-up (worth what the point would cost otherwise),
+                -- and may need the recipe first.
+                local _, pointCost = bestAt(s)
+                local craftNet = mats + (ctx.acq[t.rec] or 0)
+                    - Planner.Chance(t.rec, s) * math.max(0, pointCost or 0)
+                out.buyCost, out.craftNet = buyCost < INF and buyCost or nil, craftNet
+                if buyCost < INF and (mats == INF or buyCost <= craftNet) then
+                    st.usedAH, st.usedVendor = st.usedAH + a, st.usedVendor + v
+                    out.action, out.cost = "buy", buyCost
+                    return
                 end
-                cur.crafts = cur.crafts + crafts
-                cur.reagents = cur.reagents + matsCost
-                cur.made = cur.made + made
+            end
+            if not ctx.acq[t.rec] and ctx.acqHow[t.rec] ~= "unpriced" then
+                -- e.g. needs a specialization: can't plan the craft
+                out.action = "blocked"
+                return
+            end
+            if ctx:OneCraft(t.rec, s, false) == INF then
+                out.action = "nomats" -- a material has no AH or vendor price
+                return
+            end
+            out.action = "craft"
+            record(t.rec, s, function()
+                local c = ctx:OneCraft(t.rec, s, true)
+                out.cost = c
+                return 1, c, 0
+            end, true)
+            cur = nil
+        end
+
+        local nextTool = 1
+        while skill < target do
+            local s = math.floor(skill)
+            local t = tools[nextTool]
+            if t and s >= t.at then
+                nextTool = nextTool + 1
+                doTool(t, s)
+            else
+                local pick = bestAt(s)
+                if not pick then
+                    table.insert(gaps, s)
+                    cur = nil
+                    skill = s + 1
+                else
+                    record(pick, s, function()
+                        local _, crafts, matsCost, made = ctx:PointCost(pick, s, true)
+                        return crafts, matsCost, made
+                    end)
+                end
             end
         end
 
@@ -664,7 +788,7 @@ function Planner.Build(prof, startSkill, target, planned)
         for _, a in ipairs(acquire) do if not a.exact then estimated = estimated + 1 end end
 
         return {
-            steps = steps, gaps = gaps, acquire = acquire, shopping = shopping,
+            steps = steps, gaps = gaps, acquire = acquire, tools = toolsOut, shopping = shopping,
             sales = sales, crafted = craftedList, saleInfo = ctx.itemSaleInfo, totals = totals, estimatedLearn = estimated,
             consumed = ctx.consumed,
         }

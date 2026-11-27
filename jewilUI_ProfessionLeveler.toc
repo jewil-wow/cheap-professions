@@ -13,6 +13,7 @@ Core.lua
 Data\Recipes.lua
 Data\TrainerData.lua
 Data\VendorSeed.lua
+Data\RequiredTools.lua
 Prices.lua
 Scan.lua
 Planner.lua

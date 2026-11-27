@@ -41,6 +41,13 @@ as learnable.
 - [ ] Have the trainer scan record "Requires <specialization>" (GetTrainerServiceAbilityReq)
   so this data fills in automatically when someone visits a trainer.
 
+## Required tools
+`Data/RequiredTools.lua` lists tools the planner always schedules (enchanting rods, Arclight Spanner).
+- [ ] Other professions' tools, if any (e.g. Blacksmith Hammer, Gyromatic Micro-Adjustor at 175?).
+- [ ] Find out where Formula: Runed Arcanite Rod comes from in Forever (not taught by trainers).
+- [ ] Tools are matched by item, not by which recipes need them: a character past a rod's level
+  who doesn't carry it gets the craft scheduled at the start skill.
+
 ## Crafts worth selling on the AH
 - [ ] Work out the full list of crafted items worth selling on the AH instead of vendoring
   (today only Hillman's Cloak is on it; add more with `/cp ahsell add <item>`).

@@ -30,7 +30,9 @@ local function stepTip(st)
         tt:AddLine(("%s  (%d-%d)"):format(st.rec.n, st.from, st.to))
         tt:AddLine(("Chance to skill up: %s at %d, %s at %d"):format(pct(st.chanceFrom), st.from, pct(st.chanceTo), st.to - 1), 1, 1, 1)
         tt:AddLine(("Thresholds: yellow %d, green %d, grey %d"):format(st.rec.k[2], st.rec.k[3], st.rec.k[4]), 0.6, 0.6, 0.6)
-        tt:AddLine(("Expected crafts: %s for %d skill points"):format(cnt(st.crafts), st.to - st.from), 1, 1, 1)
+        if not st.tool then
+            tt:AddLine(("Expected crafts: %s for %d skill points"):format(cnt(st.crafts), st.to - st.from), 1, 1, 1)
+        end
         tt:AddLine(" ")
         tt:AddLine("Materials", 1, 0.82, 0)
         local items = {}
@@ -54,7 +56,9 @@ local function stepTip(st)
         end
         tt:AddDoubleLine("Materials total", Money(st.reagents), 1, 0.82, 0, 1, 1, 1)
         tt:AddLine(" ")
-        if st.rec.i then
+        if st.tool then
+            tt:AddLine(("Required tool: craft one and keep it. Expect %s skill-up."):format(pct(st.chanceFrom)), 1, 0.57, 0.24, true)
+        elseif st.rec.i then
             tt:AddLine(("Makes %s x %s. Later steps use them first; any left over are sold (see Sales)."):format(
                 cnt(st.made), st.rec.n), 0.6, 0.6, 0.6, true)
         else
@@ -225,6 +229,50 @@ local function render(plan)
         add()
     end
 
+    if plan.tools and #plan.tools > 0 then
+        strong("Required tools")
+        add(GRY .. "Tools you have to carry to craft later recipes. The plan includes them even when they aren't the cheapest skill-up." .. R)
+        add()
+        local T1, T2, T3 = 0, 62, 262
+        local TW1, TW2, TW3 = 62, 200, 328
+        addCols({
+            { MUT .. "Skill" .. R, T1, TW1, "LEFT" }, { MUT .. "Tool" .. R, T2, TW2, "LEFT" },
+            { MUT .. "Plan" .. R, T3, TW3, "LEFT" },
+        }, nil, "top")
+        for _, tl in ipairs(plan.tools) do
+            local what
+            if tl.action == "have" then
+                what = GRN .. "Already in your bags or bank" .. R
+            elseif tl.action == "buy" then
+                what = ("Buy one on the AH (%s), cheaper than crafting it. %s"):format(Money(tl.cost),
+                    tl.by > tl.at and ("Have it by " .. tl.by .. ".") or "You need it now.")
+            elseif tl.action == "craft" then
+                what = "Craft one (in Step 4)"
+                if tl.boe then
+                    what = what .. (tl.buyCost and (", cheaper than buying it (%s)"):format(Money(tl.buyCost))
+                        or ", none on the AH")
+                else
+                    what = what .. GRY .. ", soulbound so it can't be bought" .. R
+                end
+                if tl.how == "unpriced" and tl.rec.book then
+                    what = what .. "\n" .. RED .. Name(tl.rec.book) .. " isn't taught by trainers and isn't on the AH: find it (vendor or drop) before " .. tl.at .. "." .. R
+                elseif (tl.how == "AH" or tl.how == "vendor") and tl.rec.book then
+                    what = what .. "\n" .. GRY .. "Needs " .. Name(tl.rec.book) .. " (in Recipes above)." .. R
+                end
+            elseif tl.action == "nomats" then
+                what = RED .. "Can't plan the craft: a material has no AH or vendor price. Get one anyway." .. R
+            else
+                what = RED .. "Can't plan the craft (" .. tostring(tl.how) .. "). Get one anyway." .. R
+            end
+            addCols({
+                { tostring(tl.at), T1, TW1, "LEFT" }, { Name(tl.item), T2, TW2, "LEFT", true },
+                { what, T3, TW3, "LEFT", true },
+            }, nil, true)
+            L[#L].item = tl.item
+        end
+        add()
+    end
+
     strong("Materials")
     add(GRY .. "If the total cost you see on the AH is much different than this table, rescan the AH, then press Re-plan in the top right." .. R)
     add(GRY .. "Shift-click an item with the AH open to search for it." .. R)
@@ -331,7 +379,7 @@ local function render(plan)
             end
         end
         rows[#rows + 1] = row
-        if st.rec.i then lastMaker[st.rec.i] = row end
+        if st.rec.i and not st.tool then lastMaker[st.rec.i] = row end
     end
 
     local capIdx = 1
@@ -352,9 +400,12 @@ local function render(plan)
         local rec = row.rec
         local craft = (usedPlanned[rec] and (BLU .. "*" .. R) or "") .. (estimated[rec] and (ORA .. "~" .. R) or "")
             .. WHT .. rec.n .. R .. ((st and st.green) and (GRN .. " (green)" .. R) or "")
+            .. ((st and st.tool) and (ORA .. " (required tool)" .. R) or "")
 
         local fate
-        if not rec.i then
+        if st and st.tool then
+            fate = ORA .. "Keep" .. R
+        elseif not rec.i then
             fate = GRY .. "-" .. R
         else
             local si = plan.saleInfo and plan.saleInfo[rec.i]
@@ -390,7 +441,7 @@ local function render(plan)
         end
 
         addCols({
-            { st and ("%d-%d"):format(st.from, st.to) or "-", S1, W1, "LEFT" }, { craft, S2, W2, "LEFT", true },
+            { st and (st.to > st.from and ("%d-%d"):format(st.from, st.to) or tostring(st.from)) or "-", S1, W1, "LEFT" }, { craft, S2, W2, "LEFT", true },
             { cnt(row.crafts), S3, W3, "RIGHT" }, { matsList(rec, row.crafts), S4, W4, "LEFT", true },
             { fate, S5, W5, "LEFT", true },
         }, tip, true)
