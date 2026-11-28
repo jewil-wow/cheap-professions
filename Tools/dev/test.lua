@@ -1129,6 +1129,146 @@ test("planner: Philosopher's Stone picks costliest orange skill in 225-239 and h
     ok(sawUnpricedBook, "unpriced required-tool recipe shown in Recipes table")
 end)
 
+-- Issue #5: grey required tool recipes in acquire & unpriced tool recipes excluded from regular leveling.
+test("issue #5: unowned grey required tool includes its recipe in acquire and totals.recipes", function()
+    local items, books = allKnownItems()
+    for id in pairs(items) do setAH(id, books[id] and 5000 or 200, 500) end
+
+    -- (a) Alchemy 280->300: Philosopher's Stone is grey at 280 (k[4]=280) with AH pattern 9303 @ 5000c
+    local stone = assert(findRecipe("alchemy", "Philosopher's Stone"))
+    local planGrey = assert(ns.Planner.Build("alchemy", 280, 300))
+    eq(planGrey.tools[1].action, "craft", "grey Philosopher's Stone is crafted")
+    local acqStone
+    for _, a in ipairs(planGrey.acquire) do if a.rec == stone then acqStone = a end end
+    ok(acqStone, "grey Philosopher's Stone recipe included in plan.acquire")
+    eq(acqStone.how, "AH", "acquired via AH")
+    eq(acqStone.cost, 5000, "recipe cost preserved")
+    ok(planGrey.totals.recipes >= 5000, "grey tool recipe cost included in totals.recipes")
+
+    -- (b) Unpriced grey tool recipe still appears in plan.acquire as unpriced
+    mockAucPrice[9303] = nil
+    local planGreyUnpriced = assert(ns.Planner.Build("alchemy", 280, 300))
+    local acqUnpriced
+    for _, a in ipairs(planGreyUnpriced.acquire) do if a.rec == stone then acqUnpriced = a end end
+    ok(acqUnpriced, "unpriced grey tool recipe still included in plan.acquire")
+    eq(acqUnpriced.how, "unpriced", "marked unpriced")
+
+    -- (c) Enchanting 170->200: Runed Silver Rod is grey at 170 (k[4]=170) with scanned trainer fee 500c
+    local silverRod = assert(findRecipe("enchanting", "Runed Silver Rod"))
+    mockBags[6218] = 1 -- already own Runed Copper Rod
+    ns.db.trainer.enchanting = { [ns.RecipeKey(silverRod)] = { skill = 100, cost = 500 } }
+    local planRod = assert(ns.Planner.Build("enchanting", 170, 200))
+    local acqRod
+    for _, a in ipairs(planRod.acquire) do if a.rec == silverRod then acqRod = a end end
+    ok(acqRod, "grey Runed Silver Rod trainer recipe included in plan.acquire")
+    eq(acqRod.how, "trainer", "acquired via trainer")
+    eq(acqRod.cost, 500, "trainer fee preserved")
+    ok(planRod.totals.recipes >= 500, "grey trainer tool fee included in totals.recipes")
+end)
+
+test("issue #5: unpriced required tool recipe is never used for regular leveling steps", function()
+    local items, books = allKnownItems()
+
+    -- (a) Enchanting 290->300: Formula: Runed Arcanite Rod (16243) is unpriced, its mats are cheap
+    for id in pairs(items) do
+        if not books[id] then setAH(id, 5000, 500) end
+    end
+    local arcRod = assert(findRecipe("enchanting", "Runed Arcanite Rod"))
+    mockBags[6218], mockBags[6339], mockBags[11130], mockBags[11145] = 1, 1, 1, 1
+    for j = 1, #arcRod.rg, 2 do setAH(arcRod.rg[j], 10, 500) end
+
+    local planEnch = assert(ns.Planner.Build("enchanting", 290, 300))
+    local toolSteps, regularSteps = 0, 0
+    for _, st in ipairs(planEnch.steps) do
+        if st.rec == arcRod then
+            if st.tool then toolSteps = toolSteps + 1 else regularSteps = regularSteps + 1 end
+        end
+    end
+    eq(toolSteps, 1, "Runed Arcanite Rod still scheduled once as required tool")
+    eq(regularSteps, 0, "unpriced Runed Arcanite Rod must not be used for regular leveling steps")
+    local acqArc
+    for _, a in ipairs(planEnch.acquire) do if a.rec == arcRod then acqArc = a end end
+    ok(acqArc and acqArc.how == "unpriced", "unpriced Runed Arcanite Rod formula still listed in acquire")
+
+    -- (b) Alchemy 235->275: Recipe: Philosopher's Stone (9303) is unpriced, its mats are cheap
+    resetEnv()
+    for id in pairs(items) do
+        if not books[id] then setAH(id, 5000, 500) end
+    end
+    local stone = assert(findRecipe("alchemy", "Philosopher's Stone"))
+    for j = 1, #stone.rg, 2 do setAH(stone.rg[j], 10, 500) end
+
+    local planAlch = assert(ns.Planner.Build("alchemy", 235, 275))
+    local stoneTool, stoneReg = 0, 0
+    for _, st in ipairs(planAlch.steps) do
+        if st.rec == stone then
+            if st.tool then stoneTool = stoneTool + 1 else stoneReg = stoneReg + 1 end
+        end
+    end
+    eq(stoneTool, 1, "Philosopher's Stone still scheduled once as required tool")
+    eq(stoneReg, 0, "unpriced Philosopher's Stone must not be used for regular leveling steps")
+    local acqStone
+    for _, a in ipairs(planAlch.acquire) do if a.rec == stone then acqStone = a end end
+    ok(acqStone and acqStone.how == "unpriced", "unpriced Philosopher's Stone recipe still listed in acquire")
+end)
+
+test("issue #5: unpriced required tool recipe does not distort Pass 1 recipe selection", function()
+    local items, books = allKnownItems()
+    for id in pairs(items) do
+        if not books[id] then setAH(id, 10000, 500) end
+    end
+    local stone = assert(findRecipe("alchemy", "Philosopher's Stone"))
+    local stoneshield = assert(findRecipe("alchemy", "Lesser Stoneshield Potion"))
+
+    -- Philosopher's Stone (9303) is unpriced, with cheap mats (130c/craft).
+    for j = 1, #stone.rg, 2 do setAH(stone.rg[j], 10, 500) end
+    -- Lesser Stoneshield Potion (book 4624, k={215,230,250,270}) uses Mithril Ore + Goldthorn + Leaded Vial (40c vendor).
+    -- At 240c/craft + 5000c book, it vastly beats trainer recipes (2530c+ with Crystal Vial) across 225-270,
+    -- but is pricier than Philosopher's Stone (130c/craft) if Pass 1 wrongly treats the unpriced tool as allowed.
+    setAH(stoneshield.book, 5000, 1)
+    setAH(3858, 100, 500) -- Mithril Ore
+    setAH(3821, 100, 500) -- Goldthorn
+
+    local plan = assert(ns.Planner.Build("alchemy", 225, 275))
+    local boughtShield = false
+    for _, a in ipairs(plan.acquire) do
+        if a.rec == stoneshield and a.how == "AH" then boughtShield = true end
+    end
+    ok(boughtShield, "Pass 1 must still buy profitable AH recipe instead of relying on unpriced tool recipe")
+    for _, st in ipairs(plan.steps) do
+        if st.rec == stone then
+            ok(st.tool, "unpriced Philosopher's Stone only appears as a required tool step")
+        end
+    end
+end)
+
+test("issue #5: priced required tool remains allowed for leveling; owned tool respects includeBooks=false", function()
+    local items, books = allKnownItems()
+    for id in pairs(items) do
+        if not books[id] then setAH(id, 10000, 500) end
+    end
+    local stone = assert(findRecipe("alchemy", "Philosopher's Stone"))
+    for j = 1, #stone.rg, 2 do setAH(stone.rg[j], 10, 500) end
+    setAH(stone.book, 5000, 1)
+
+    -- (a) When Recipe: Philosopher's Stone IS priced on AH and unowned, leveling may use it too
+    local planPriced = assert(ns.Planner.Build("alchemy", 225, 275))
+    local regularStone = 0
+    for _, st in ipairs(planPriced.steps) do
+        if st.rec == stone and not st.tool then regularStone = regularStone + 1 end
+    end
+    ok(regularStone > 0, "priced unowned required tool recipe can still be used for leveling")
+
+    -- (b) When Philosopher's Stone is already owned and includeBooks=false, its pattern is not bought
+    ns.db.opts.includeBooks = false
+    mockBags[9149] = 1
+    local planOwned = assert(ns.Planner.Build("alchemy", 225, 275))
+    eq(planOwned.tools[1].action, "have", "tool marked have")
+    for _, a in ipairs(planOwned.acquire) do
+        ok(a.rec ~= stone, "owned tool pattern is not forced when includeBooks=false")
+    end
+end)
+
 -- Summary ------------------------------------------------------------------
 local elapsed = os.clock() * 1000
 realPrint(("\n%d passed, %d failed%s (%.0f ms)"):format(

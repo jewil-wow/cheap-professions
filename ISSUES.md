@@ -33,7 +33,7 @@ Pick one item at a time on a fresh branch, add a failing test to `Tools/dev/test
   - Track tentative usage within a single dry-run craft evaluation (or roll back on commit failure) and guard `PointCost`/`ReagentCost` commit return values.
   - **Done when:** Unit test where a recipe and its prep-crafted intermediate share a scarce base material never crashes and accounts for 100% of materials.
 
-- [ ] **#5 Required tool recipes omitted from Shopping List when `startSkill >= rec.k[4]`** (`Planner.lua`)
+- [x] **#5 Required tool recipes omitted from Shopping List when `startSkill >= rec.k[4]`** (`Planner.lua`)
   - `acquire` only iterates `candidates` (which excludes recipes grey at `startSkill`). A character starting above a required tool's grey level still gets the tool scheduled by `doTool`, and `UI.lua` points to *"in Recipes above"*, but the pattern is never added to `acquire` or `totals.recipes`.
   - Also `ctx.allowed[rec] = true` is set even when `ctx.acq[rec]` is `nil` (`unpriced`), making an unobtainable tool recipe eligible for regular leveling steps.
   - **Done when:** Unit test for an unowned required tool past its grey skill includes its recipe in `acquire`/`totals.recipes` and never uses unpriced tool recipes for non-tool leveling steps.

@@ -499,15 +499,18 @@ function Planner.Build(prof, startSkill, target, planned)
     local tools = requiredTools(ctx, prof, startSkill, target, recipes)
     for _, t in ipairs(tools) do
         local rec = t.rec
-        if ctx.acq[rec] == nil and rec.book and ctx.acqHow[rec] ~= "cooldown" then
-            local ah = ns.Prices.AH(rec.book)
-            local v = ns.Prices.Vendor(rec.book)
-            if v and (not ah or v <= ah) then ctx.acq[rec], ctx.acqHow[rec] = v, "vendor"
-            elseif ah then ctx.acq[rec], ctx.acqHow[rec] = ah, "AH"
-            else ctx.acqHow[rec] = "unpriced" end
+        if not t.have then
+            if ctx.acq[rec] == nil and rec.book and ctx.acqHow[rec] ~= "cooldown" then
+                local ah = ns.Prices.AH(rec.book)
+                local v = ns.Prices.Vendor(rec.book)
+                if v and (not ah or v <= ah) then ctx.acq[rec], ctx.acqHow[rec] = v, "vendor"
+                elseif ah then ctx.acq[rec], ctx.acqHow[rec] = ah, "AH"
+                else ctx.acqHow[rec] = "unpriced" end
+            end
+            -- A tool you have to craft means getting its recipe anyway, so levelling may use it too
+            -- (only when the recipe is actually priced/obtainable).
+            if not t.boe and ctx.acq[rec] then ctx.allowed[rec] = true end
         end
-        -- A tool you have to craft means getting its recipe anyway, so levelling may use it too.
-        if not t.have and not t.boe then ctx.allowed[rec] = true end
     end
 
     -- With avoidGreen, a green craft (skill at or above its green threshold) is judged as if
