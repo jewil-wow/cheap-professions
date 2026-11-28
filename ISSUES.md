@@ -19,7 +19,7 @@ Pick one item at a time on a fresh branch, add a failing test to `Tools/dev/test
   - Extract craft yields from `SpellEffect.csv` in `build_recipes.py` and fall back to scanned yields only as an override.
   - **Done when:** Multi-yield recipes have accurate yields in `Data/Recipes.lua` even on a fresh profile with no tradeskill scan.
 
-- [ ] **#3 Guard `savedPlan` / `thaw` against missing recipe keys** (`UI.lua`)
+- [x] **#3 Guard `savedPlan` / `thaw` against missing recipe keys** (`UI.lua`)
   - If a future `Data/Recipes.lua` update removes or renames a recipe key saved in `jewilUI_ProfessionLevelerCharDB.plans`, `thaw` replaces `{ __rec = key }` with `nil` and `UI.Render` crashes on `st.rec.n`.
   - Detect any unresolved `__rec` during `thaw` and discard the stale saved plan so `UI.Refresh` automatically replans.
   - **Done when:** Unit test with an unknown `__rec` key in a frozen plan cleanly triggers a fresh replan instead of crashing.

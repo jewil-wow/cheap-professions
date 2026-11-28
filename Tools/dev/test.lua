@@ -868,6 +868,57 @@ test("issue #2: scanned tradeskill yields override baked static yields", functio
     near(planLow.steps[1].made, 10, 1e-6, "scanned yield 1 overrides static yield 2")
 end)
 
+-- Issue #3: a saved plan that names a recipe key the current data no longer has.
+local function stalePlan(key)
+    return { start = 1, target = 45, builtAt = 1, steps = { { rec = { __rec = key }, crafts = 3 } } }
+end
+
+test("issue #3: savedPlan returns nil for a stored plan with an unknown recipe key", function()
+    ns.UI._live.tailoring = nil
+    ns.cdb.plans = { tailoring = stalePlan("s:999999999") }
+    eq(ns.UI._savedPlan("tailoring"), nil, "stale plan is not returned")
+    eq(ns.UI._live.tailoring, nil, "stale plan is not cached as live")
+end)
+
+test("issue #3: savedPlan discards a stored plan with an unknown recipe key", function()
+    ns.UI._live.tailoring = nil
+    ns.cdb.plans = { tailoring = stalePlan("s:999999999") }
+    ns.UI._savedPlan("tailoring")
+    eq(ns.cdb.plans.tailoring, nil, "stale plan is removed from saved variables")
+    eq(#prints, 1, "one chat message")
+    ok(stripColor(prints[1]):find("Saved Tailoring plan used a recipe that no longer exists", 1, true),
+        "chat message explains the missing recipe: " .. tostring(prints[1]))
+    -- Second lookup finds nothing stored: no re-thaw, no repeated message
+    eq(ns.UI._savedPlan("tailoring"), nil, "nothing left to load")
+    eq(#prints, 1, "message is not repeated")
+end)
+
+test("issue #3: savedPlan discards a stored plan that has no steps", function()
+    ns.UI._live.tailoring = nil
+    ns.cdb.plans = { tailoring = { start = 1, target = 45, builtAt = 1 } }
+    eq(ns.UI._savedPlan("tailoring"), nil, "plan without steps is not returned")
+    eq(ns.cdb.plans.tailoring, nil, "plan without steps is removed from saved variables")
+    ok(stripColor(prints[1] or ""):find("Saved Tailoring plan could not be read", 1, true),
+        "chat message for unreadable plan: " .. tostring(prints[1]))
+end)
+
+test("issue #3: one stale profession plan does not affect other professions", function()
+    ns.UI._live.tailoring, ns.UI._live.alchemy = nil, nil
+    local bolt = assert(findRecipe("tailoring", "Bolt of Linen Cloth"))
+    ns.cdb.plans = {
+        tailoring = stalePlan(ns.RecipeKey(bolt)),
+        alchemy = stalePlan("s:999999999"),
+    }
+    local plan = ns.UI._savedPlan("tailoring")
+    ok(plan, "valid tailoring plan loads")
+    eq(plan.steps[1].rec, bolt, "valid tailoring plan resolves its recipe")
+    eq(ns.UI._savedPlan("alchemy"), nil, "stale alchemy plan is rejected")
+    eq(ns.cdb.plans.alchemy, nil, "stale alchemy plan is removed")
+    ok(ns.cdb.plans.tailoring, "valid tailoring plan stays stored")
+    eq(#prints, 1, "only the stale alchemy plan prints a message")
+    ns.UI._live.tailoring = nil
+end)
+
 -- Summary ------------------------------------------------------------------
 local elapsed = os.clock() * 1000
 realPrint(("\n%d passed, %d failed%s (%.0f ms)"):format(

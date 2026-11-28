@@ -1054,7 +1054,14 @@ local function savedPlan(prof)
         live[prof] = plan
         return plan
     end
+    -- The stored plan can't be used (e.g. a recipe it names was removed or renamed in a
+    -- data update). Drop it so it isn't re-thawed every time; the caller replans.
+    ns.cdb.plans[prof] = nil
+    local why = ok and "could not be read" or "used a recipe that no longer exists"
+    ns.Print(("Saved %s plan %s, so a new plan will be made."):format(ns.PROF_NAMES[prof] or prof, why))
 end
+
+UI._savedPlan, UI._live = savedPlan, live -- for the offline test
 
 local function storePlan(prof, plan)
     live[prof] = plan
