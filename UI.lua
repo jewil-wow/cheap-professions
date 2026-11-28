@@ -27,8 +27,13 @@ end
 -- Tooltip for one step: every number behind its cost.
 local function stepTip(st)
     return function(tt)
-        tt:AddLine(("%s  (%d-%d)"):format(st.rec.n, st.from, st.to))
-        tt:AddLine(("Chance to skill up: %s at %d, %s at %d"):format(pct(st.chanceFrom), st.from, pct(st.chanceTo), st.to - 1), 1, 1, 1)
+        if st.to > st.from then
+            tt:AddLine(("%s  (%d-%d)"):format(st.rec.n, st.from, st.to))
+            tt:AddLine(("Chance to skill up: %s at %d, %s at %d"):format(pct(st.chanceFrom), st.from, pct(st.chanceTo), st.to - 1), 1, 1, 1)
+        else
+            tt:AddLine(("%s  (%d)"):format(st.rec.n, st.from))
+            tt:AddLine(("Chance to skill up: %s at %d"):format(pct(st.chanceFrom), st.from), 1, 1, 1)
+        end
         tt:AddLine(("Thresholds: yellow %d, green %d, grey %d"):format(st.rec.k[2], st.rec.k[3], st.rec.k[4]), 0.6, 0.6, 0.6)
         if not st.tool then
             tt:AddLine(("Expected crafts: %s for %d skill points"):format(cnt(st.crafts), st.to - st.from), 1, 1, 1)

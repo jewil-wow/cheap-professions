@@ -1016,6 +1016,107 @@ test("issue #4: dry run does not double-count shared bagged supply across reagen
     eq(plan.totals.ah, 500, "spent 500c instead of 2040c")
 end)
 
+
+test("planner: alchemy crafts Philosopher's Stone when target >= 275 (orange 225-239)", function()
+    local items, books = allKnownItems()
+    for id in pairs(items) do setAH(id, books[id] and 5000 or 200, 500) end
+    local stone = assert(findRecipe("alchemy", "Philosopher's Stone"))
+
+    -- Target 274: below 275 threshold -> not scheduled
+    local planBelow = assert(ns.Planner.Build("alchemy", 200, 274))
+    eq(#planBelow.tools, 0, "no required tools when target < 275")
+
+    -- Target 275: scheduled as a required tool while orange (225-239)
+    local plan275 = assert(ns.Planner.Build("alchemy", 200, 275))
+    eq(#plan275.tools, 1, "Philosopher's Stone listed at target 275")
+    eq(plan275.tools[1].item, 9149, "item is Philosopher's Stone")
+    eq(plan275.tools[1].action, "craft", "scheduled for craft when unowned")
+    ok(plan275.tools[1].at >= 225 and plan275.tools[1].at <= 239,
+        "scheduled in orange window 225-239 (got " .. tostring(plan275.tools[1].at) .. ")")
+
+    local toolStep
+    for _, st in ipairs(plan275.steps) do
+        if st.tool and st.rec == stone then toolStep = st end
+    end
+    ok(toolStep, "Philosopher's Stone craft step present")
+    eq(toolStep.chanceFrom, 1, "crafted while orange (100% skill-up)")
+    eq(toolStep.to, toolStep.from + 1, "gives 1 skill point")
+    near(toolStep.crafts, 1, 1e-6, "crafts exactly 1")
+
+    -- Recipe: Philosopher's Stone included in acquire even when includeBooks=false
+    ns.db.opts.includeBooks = false
+    local planNoBooks = assert(ns.Planner.Build("alchemy", 200, 300))
+    eq(planNoBooks.tools[1].action, "craft", "still crafted when includeBooks=false")
+    local hasBook = false
+    for _, a in ipairs(planNoBooks.acquire) do
+        if a.rec == stone and a.how == "AH" and a.cost == 5000 then hasBook = true end
+    end
+    ok(hasBook, "Recipe: Philosopher's Stone included in plan.acquire")
+
+    -- Already owned (even with useBags=false): marked 'have', not crafted
+    ns.db.opts.useBags = false
+    mockBags[9149] = 1
+    local planHave = assert(ns.Planner.Build("alchemy", 200, 300))
+    eq(planHave.tools[1].action, "have", "skipped when already owned")
+    for _, st in ipairs(planHave.steps) do
+        ok(st.rec ~= stone, "no craft step when already owned")
+    end
+end)
+
+test("planner: Philosopher's Stone picks costliest orange skill in 225-239 and handles grey start >= 280", function()
+    local items, books = allKnownItems()
+    for id in pairs(items) do setAH(id, books[id] and 5000 or 1000, 500) end
+    local stone = assert(findRecipe("alchemy", "Philosopher's Stone"))
+
+    -- Make Draught of Detect Undead (learn 230, orange 230-244: Arthas' Tears 8836 + Crystal Vial 8925)
+    -- super cheap, while 225-229 uses Greater Mana Potion (yellow 220, rising cost through 229).
+    -- Costliest point in 225-239 should be 229 (right before Detect Undead unlocks at 230).
+    setAH(8836, 10, 500)   -- Arthas' Tears (cheap!)
+    setAH(3358, 500, 500)  -- Khadgar's Whisker
+    setAH(3821, 500, 500)  -- Goldthorn
+    setAH(7972, 5000, 500) -- Ichor of Undeath (expensive)
+    setAH(249274, 5000, 500) -- Viridian Dye mat (expensive)
+    setAH(8831, 5000, 500) -- Purple Lotus (expensive)
+    setAH(4625, 5000, 500) -- Firebloom (expensive)
+    setAH(3575, 5000, 500) -- Iron Bar
+    setAH(9262, 5000, 500) -- Black Vitriol
+    ns.db.opts.includeBooks = false -- only trainer recipes + required tool
+
+    local planOpt = assert(ns.Planner.Build("alchemy", 220, 275))
+    eq(planOpt.tools[1].at, 229, "placed at costliest orange skill (229, right before cheaper 230 recipe)")
+
+    -- Starting at 280 (grey for Philosopher's Stone) without owning it:
+    -- still crafts it at 280, includes its recipe in acquire & totals.recipes, and renders tooltip cleanly.
+    local planGrey = assert(ns.Planner.Build("alchemy", 280, 300))
+    eq(planGrey.tools[1].action, "craft", "crafted even when starting at 280")
+    eq(planGrey.tools[1].at, 280, "crafted at start skill 280")
+    local hasBook = false
+    for _, a in ipairs(planGrey.acquire) do
+        if a.rec == stone and a.cost == 5000 then hasBook = true end
+    end
+    ok(hasBook, "Recipe: Philosopher's Stone still in plan.acquire when starting past grey threshold")
+    ok(planGrey.totals.recipes >= 5000, "recipe cost counted in totals.recipes")
+
+    local lines = ns.UI.Render(planGrey)
+    local tt = {
+        buf = {},
+        AddLine = function(self, s) self.buf[#self.buf + 1] = stripColor(s) end,
+        AddDoubleLine = function(self, l, r) self.buf[#self.buf + 1] = stripColor(l) .. " | " .. stripColor(r) end,
+    }
+    local sawGreyTip = false
+    for _, l in ipairs(lines) do
+        if l.tip then
+            tt.buf = {}
+            l.tip(tt)
+            if tt.buf[1] == "Philosopher's Stone  (280)" then
+                sawGreyTip = true
+                eq(tt.buf[2], "Chance to skill up: 0% at 280", "grey tool tooltip shows single skill")
+            end
+        end
+    end
+    ok(sawGreyTip, "rendered tooltip for grey Philosopher's Stone step")
+end)
+
 -- Summary ------------------------------------------------------------------
 local elapsed = os.clock() * 1000
 realPrint(("\n%d passed, %d failed%s (%.0f ms)"):format(

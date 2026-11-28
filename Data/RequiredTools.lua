@@ -3,12 +3,16 @@
 -- cheapest skill-up at that point.
 --   item = the tool's item id (its recipe is looked up in Data/Recipes.lua)
 --   at   = skill to craft it at (or as soon as the recipe can be learned after that)
+--   maxAt = optional upper skill bound; when set, craft at the costliest point in [at, maxAt]
 --   by   = skill you need it by (only used for buyable tools; defaults to `at`)
 --   boe  = it can be bought, so the planner compares buying it to crafting it
 --   minTarget = only include it when the plan goes at least this high
 local _, ns = ...
 
 ns.Data.requiredTools = {
+    alchemy = {
+        { item = 9149, at = 225, maxAt = 239, minTarget = 275 }, -- Philosopher's Stone (orange 225-239, needed for transmutes at 275)
+    },
     enchanting = {
         { item = 6218, at = 1 },                    -- Runed Copper Rod
         { item = 6339, at = 109 },                  -- Runed Silver Rod

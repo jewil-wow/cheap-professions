@@ -446,7 +446,7 @@ local function requiredTools(ctx, prof, startSkill, target, recipes)
                 local at = math.max(def.at, ctx.learn[rec])
                 out[#out + 1] = {
                     def = def, rec = rec, item = def.item, boe = def.boe,
-                    at = at, by = math.max(def.by or at, at),
+                    at = at, maxAt = def.maxAt, by = math.max(def.by or at, at),
                     have = ns.Prices.Owned(def.item) > 0,
                 }
             end
@@ -585,6 +585,24 @@ function Planner.Build(prof, startSkill, target, planned)
             if c < best[s] then best[s] = c end
         end
     end
+
+    -- Tools with a craft window (e.g. orange range) are placed at the costliest skill point
+    -- in that window, so the guaranteed skill-up replaces the most expensive normal point.
+    for _, t in ipairs(tools) do
+        if t.maxAt and not t.have then
+            local lo = math.max(t.at, startSkill)
+            local hi = math.min(t.maxAt, target - 1)
+            if lo <= hi then
+                local pickS, pickCost = lo, best[lo]
+                for s = lo + 1, hi do
+                    if best[s] > pickCost then pickS, pickCost = s, best[s] end
+                end
+                t.at = pickS
+                t.by = math.max(t.by, t.at)
+            end
+        end
+    end
+    table.sort(tools, function(a, b) return a.at < b.at end)
 
     -- Unpriced patterns that would have helped, if you can find them.
     local missed = {}
@@ -800,6 +818,9 @@ function Planner.Build(prof, startSkill, target, planned)
         end
         for _, rec in ipairs(candidates) do
             if used[rec] then addAcq(rec) end
+        end
+        for _, t in ipairs(tools) do
+            if used[t.rec] then addAcq(t.rec) end
         end
         for _, rec in pairs(ctx.prepRec) do addAcq(rec) end
         table.sort(acquire, function(a, b) return a.learn < b.learn end)
