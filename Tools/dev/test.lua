@@ -106,7 +106,10 @@ C_TradeSkillUI = {
     end,
     GetRecipeSchematic = function(id)
         local r = mockTradeSkill.recipes[id]
-        return r and { outputItemID = r.item, quantityMin = r.yield or 1 } or nil
+        if not r then return nil end
+        local qMin = r.yieldMin or r.yield or 1
+        local qMax = r.yieldMax or r.yield or qMin
+        return { outputItemID = r.item, quantityMin = qMin, quantityMax = qMax }
     end,
 }
 
@@ -738,6 +741,131 @@ test("issue #1: legacy saved plans thaw unambiguous i: keys and reject ambiguous
     eq(ns.db.trainer.tailoring[ns.RecipeKey(banner1)].cost, 400, "banner 1 cost matched via item link")
     eq(ns.db.trainer.tailoring[ns.RecipeKey(banner2)].cost, 600, "banner 2 cost matched via item link")
     eq(ns.db.trainer.tailoring[ns.RecipeKey(banner2)].skill, 25, "banner 2 skill matched via item link")
+end)
+
+test("issue #2: fresh profile uses baked static yields for step output and sale credit", function()
+    local roughDyn = assert(findRecipe("engineering", "Rough Dynamite"))
+    local lightShot = assert(findRecipe("engineering", "Crafted Light Shot"))
+    local coarseDyn = assert(findRecipe("engineering", "Coarse Dynamite"))
+
+    -- Fixed yield = 2 (Rough Dynamite): 10 orange crafts -> 20 items, sale credit = 20 * 30c
+    setAH(4357, 50, 500) -- Rough Blasting Powder
+    setAH(2589, 50, 500) -- Linen Cloth
+    mockSellPrice[roughDyn.i] = 30
+    local planDyn = assert(ns.Planner.Build("engineering", 1, 11))
+    eq(#planDyn.steps, 1, "single Rough Dynamite step")
+    eq(planDyn.steps[1].rec, roughDyn, "chose Rough Dynamite")
+    near(planDyn.steps[1].crafts, 10, 1e-6, "10 crafts")
+    near(planDyn.steps[1].made, 20, 1e-6, "Rough Dynamite makes 2 per craft without scan")
+    near(planDyn.totals.sale, 600, 1e-6, "sale credit uses baked yield 2")
+
+    -- Fixed yield = 200 (Crafted Light Shot): 10 orange crafts -> 2000 items, sale credit = 2000 * 1c
+    resetEnv()
+    setAH(4357, 50, 500) -- Rough Blasting Powder
+    setAH(2840, 50, 500) -- Copper Bar
+    mockSellPrice[lightShot.i] = 1
+    local planShot = assert(ns.Planner.Build("engineering", 1, 11))
+    eq(#planShot.steps, 1, "single Crafted Light Shot step")
+    eq(planShot.steps[1].rec, lightShot, "chose Crafted Light Shot")
+    near(planShot.steps[1].crafts, 10, 1e-6, "10 crafts")
+    near(planShot.steps[1].made, 2000, 1e-6, "Crafted Light Shot makes 200 per craft without scan")
+    near(planShot.totals.sale, 2000, 1e-6, "sale credit uses baked yield 200")
+
+    -- Variable yield 1-3, expected average = 2 (Coarse Dynamite): 10 orange crafts -> 20 items
+    resetEnv()
+    mockBags[6219] = 1   -- Arclight Spanner already owned
+    setAH(4364, 50, 500) -- Coarse Blasting Powder
+    setAH(2589, 50, 500) -- Linen Cloth
+    mockSellPrice[coarseDyn.i] = 20
+    local planCoarse = assert(ns.Planner.Build("engineering", 75, 85))
+    eq(#planCoarse.steps, 1, "single Coarse Dynamite step")
+    eq(planCoarse.steps[1].rec, coarseDyn, "chose Coarse Dynamite")
+    near(planCoarse.steps[1].crafts, 10, 1e-6, "10 crafts")
+    near(planCoarse.steps[1].made, 20, 1e-6, "Coarse Dynamite expected yield is 2 without scan")
+    near(planCoarse.totals.sale, 400, 1e-6, "sale credit uses baked expected yield 2")
+end)
+
+test("issue #2: fresh profile uses baked static yields for intermediate costing and prep crafts", function()
+    -- Fire Oil (yield = 2) uses 2x Firefin Snapper (100c) + 1x Empty Vial (4c vendor seed) = 204c/craft = 102c/unit.
+    -- AH price for Fire Oil is 150c: cheaper to craft at yield=2 (102c < 150c), but looks pricier at yield=1 (204c > 150c).
+    local fireProt = assert(findRecipe("alchemy", "Fire Protection Potion"))
+    ns.cdb.known.alchemy = { [ns.RecipeKey(fireProt)] = true }
+    setAH(4402, 100, 500) -- Small Flame Sac
+    setAH(6359, 100, 500) -- Firefin Snapper
+    setAH(6371, 150, 500) -- Fire Oil on AH (between 102c and 204c)
+
+    -- Alchemy 170->180: Fire Oil is grey (170); Fire Protection Potion is orange (10 crafts = 10 Fire Oil needed)
+    local plan = assert(ns.Planner.Build("alchemy", 170, 180))
+    eq(#plan.gaps, 0, "no gaps")
+    eq(plan.steps[1].rec, fireProt, "chose Fire Protection Potion")
+    eq(findShopRow(plan, 6371), nil, "Fire Oil prep-crafted instead of bought at 150c")
+
+    -- 10 Fire Oil at yield=2 requires 5 crafts = 10 Firefin Snapper + 5 Empty Vial (not 20 / 10)
+    local snapper = assert(findShopRow(plan, 6359), "bought Firefin Snapper for prep-crafted Fire Oil")
+    near(snapper.ah, 10, 1e-6, "10 Firefin Snapper for 5 Fire Oil crafts")
+    local vial = assert(findShopRow(plan, 3371), "bought Empty Vial for prep-crafted Fire Oil")
+    near(vial.vendor, 5, 1e-6, "5 Empty Vial for 5 Fire Oil crafts")
+end)
+
+test("issue #2: Scan.TradeSkill averages variable yields and does not downgrade static yields", function()
+    local bolt = assert(findRecipe("tailoring", "Bolt of Linen Cloth"))
+    local bag = assert(findRecipe("tailoring", "Linen Bag"))
+    mockTradeSkill = {
+        prof = "Tailoring",
+        linked = false,
+        recipes = {
+            [bolt.sp] = { name = bolt.n, item = bolt.i, learned = true, yieldMin = 1, yieldMax = 3 },
+            [bag.sp] = { name = bag.n, item = bag.i, learned = true, yieldMin = 2, yieldMax = 5 },
+        },
+    }
+    ns.Scan.TradeSkill()
+    near(ns.db.yields.tailoring[ns.RecipeKey(bolt)], 2, 1e-6, "1-3 averages to 2")
+    near(ns.db.yields.tailoring[ns.RecipeKey(bag)], 3.5, 1e-6, "2-5 averages to 3.5")
+
+    -- Scanning Iron Grenade (2-4, avg 3) clears any stale pre-fix yield and keeps effective yield at 3
+    local grenade = assert(findRecipe("engineering", "Iron Grenade"))
+    ns.db.yields.engineering = { [ns.RecipeKey(grenade)] = 2 }
+    mockTradeSkill = {
+        prof = "Engineering",
+        linked = false,
+        recipes = {
+            [grenade.sp] = { name = grenade.n, item = grenade.i, learned = true, yieldMin = 2, yieldMax = 4 },
+        },
+    }
+    ns.Scan.TradeSkill()
+    eq(ns.db.yields.engineering[ns.RecipeKey(grenade)], nil, "stale pre-fix yield cleared when live average matches static yield")
+    mockBags[6219] = 1   -- Arclight Spanner
+    setAH(3575, 100, 500) -- Iron Bar
+    setAH(4377, 100, 500) -- Heavy Blasting Powder
+    setAH(4306, 100, 500) -- Silk Cloth
+    local plan = assert(ns.Planner.Build("engineering", 175, 176))
+    eq(plan.steps[1].rec, grenade, "chose Iron Grenade")
+    near(plan.steps[1].crafts, 1, 1e-6, "1 craft at skill 175")
+    near(plan.steps[1].made, 3, 1e-6, "Iron Grenade yields average 3 after scanning 2-4")
+end)
+
+test("issue #2: scanned tradeskill yields override baked static yields", function()
+    local roughDyn = assert(findRecipe("engineering", "Rough Dynamite"))
+    setAH(4357, 50, 500) -- Rough Blasting Powder
+    setAH(2589, 50, 500) -- Linen Cloth
+
+    -- Live scan reports higher yield (4 instead of static 2)
+    mockTradeSkill = {
+        prof = "Engineering",
+        linked = false,
+        recipes = {
+            [roughDyn.sp] = { name = roughDyn.n, item = roughDyn.i, learned = true, yieldMin = 4, yieldMax = 4 },
+        },
+    }
+    ns.Scan.TradeSkill()
+    local planHigh = assert(ns.Planner.Build("engineering", 1, 11))
+    near(planHigh.steps[1].made, 40, 1e-6, "scanned yield 4 overrides static yield 2")
+
+    -- Live scan reports lower yield (1 instead of static 2)
+    mockTradeSkill.recipes[roughDyn.sp] = { name = roughDyn.n, item = roughDyn.i, learned = true, yieldMin = 1, yieldMax = 1 }
+    ns.Scan.TradeSkill()
+    local planLow = assert(ns.Planner.Build("engineering", 1, 11))
+    near(planLow.steps[1].made, 10, 1e-6, "scanned yield 1 overrides static yield 2")
 end)
 
 -- Summary ------------------------------------------------------------------

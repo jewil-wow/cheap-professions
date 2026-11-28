@@ -7,14 +7,14 @@ Usage:
     #             tailoring cooking; do
     #      curl -sL -A "Mozilla/5.0" -o "$DIR/$p.html" \
     #        "https://seemeta.com/en/wow-forever/professions/$p"; sleep 2; done
-    # 2. (optional) download client data from wago.tools for spell IDs and craft cooldowns,
+    # 2. (optional) download client data from wago.tools for spell IDs, craft yields, and cooldowns,
     #    into another empty directory (B = the Forever build, e.g. 1.60.1.71037):
     #    for t in SkillLineAbility SpellEffect SpellCooldowns SpellReagents; do
     #      curl -sL -o "$WAGO/$t.csv" "https://wago.tools/db2/$t/csv?build=$B"; done
     # 3. generate:
     #    python3 -I Tools/build_recipes.py "$DIR" Data/Recipes.lua ["$WAGO"]
     #
-    # Or enrich an existing Data/Recipes.lua with spell IDs from wago.tools DB2 CSVs:
+    # Or enrich an existing Data/Recipes.lua with spell IDs and yields from wago.tools DB2 CSVs:
     #    python3 -I Tools/build_recipes.py --enrich Data/Recipes.lua "$WAGO"
 
 Each recipe row on seemeta has: the product (item=ID, or spell=ID for enchants),
@@ -40,6 +40,10 @@ PROFESSIONS = [
 ]
 
 WH = r'href="https://www\.wowhead\.com/forever/(item|spell)=(\d+)"'
+WAGO_HEADER_COMMENT = (
+    "-- sp = crafting spell id, cd = craft cooldown in seconds, "
+    "y = expected items per craft (omitted when 1; from client data via wago.tools)\n"
+)
 
 
 def lua_str(s):
@@ -121,7 +125,7 @@ def rg_signature(rg):
 
 
 def load_wago(wago_dir):
-    """Load spell IDs, reagent signatures, skill ranks, and cooldowns from client DB2 tables."""
+    """Load spell IDs, yields, reagent signatures, skill ranks, and cooldowns from client DB2 tables."""
     csv.field_size_limit(10**9)
     lines = {line for _, _, line in PROFESSIONS}
     spell_lines = {}
@@ -147,6 +151,7 @@ def load_wago(wago_dir):
                     cooldowns[sp] = ms // 1000
 
     item_spells = {}
+    yields = {}
     with open(os.path.join(wago_dir, "SpellEffect.csv"), encoding="utf-8") as f:
         for r in csv.DictReader(f):
             sp = int(r["SpellID"])
@@ -154,6 +159,11 @@ def load_wago(wago_dir):
                 iid = int(r["EffectItemType"])
                 for line in spell_lines[sp]:
                     item_spells.setdefault((line, iid), set()).add(sp)
+                # EffectBasePointsF stores the exact expected output count (including the midpoint
+                # (min + max) / 2 when Variance > 0; 0 or 1 means a single crafted item).
+                bp = float(r.get("EffectBasePointsF") or 0)
+                if bp > 1:
+                    yields[sp] = int(round(bp)) if abs(bp - round(bp)) < 1e-6 else round(bp, 4)
 
     spell_reagents = {}
     reagents_path = os.path.join(wago_dir, "SpellReagents.csv")
@@ -173,6 +183,7 @@ def load_wago(wago_dir):
     return {
         "cooldowns": cooldowns,
         "item_spells": item_spells,
+        "yields": yields,
         "spell_reagents": spell_reagents,
         "sla_ranks": sla_ranks,
     }
@@ -200,14 +211,17 @@ def resolve_spell(wago, line, iid, rg, k=None):
 
 
 def enrich_lua(lua_path, wago_dir):
-    """Inject/update sp=<spellID> on item-producing recipe rows in an existing Data/Recipes.lua."""
+    """Inject/update sp=<spellID> and y=<yield> on item-producing recipe rows in Data/Recipes.lua."""
     wago = load_wago(wago_dir)
     prof_lines = {key: line for _, key, line in PROFESSIONS}
     prof = None
     out_lines = []
-    matched, missing = 0, 0
+    matched, missing, multi_yield = 0, 0, 0
     with open(lua_path, encoding="utf-8") as f:
         for line in f:
+            if line.startswith("-- sp = crafting spell id,"):
+                out_lines.append(WAGO_HEADER_COMMENT)
+                continue
             m = re.match(r'^D\.recipes\["(\w+)"\]', line)
             if m:
                 prof = m.group(1)
@@ -216,7 +230,7 @@ def enrich_lua(lua_path, wago_dir):
             mi = re.match(r"^(\s*\{i=(\d+))(?:,sp=\d+)?(,.*)$", line)
             if prof in prof_lines and mi:
                 prefix, iid = mi.group(1), int(mi.group(2))
-                rest = mi.group(3)
+                rest = re.sub(r",y=[0-9.]+(?=,rg=\{)", "", mi.group(3))
                 km = re.search(r"k=\{(nil|\d+),(\d+),(\d+),(\d+)\}", rest)
                 k = [None if km.group(1) == "nil" else int(km.group(1)),
                      int(km.group(2)), int(km.group(3)), int(km.group(4))] if km else None
@@ -224,6 +238,10 @@ def enrich_lua(lua_path, wago_dir):
                 rg = [int(x) for x in rm.group(1).split(",") if x] if rm else []
                 sp = resolve_spell(wago, prof_lines[prof], iid, rg, k)
                 if sp is not None:
+                    y = wago["yields"].get(sp)
+                    if y and y > 1:
+                        rest = rest.replace(",rg={", f",y={y},rg={{", 1)
+                        multi_yield += 1
                     out_lines.append(f"{prefix},sp={sp}{rest}\n")
                     matched += 1
                 else:
@@ -234,7 +252,8 @@ def enrich_lua(lua_path, wago_dir):
                 out_lines.append(line)
     with open(lua_path, "w", encoding="utf-8") as f:
         f.writelines(out_lines)
-    print(f"enriched {matched} item recipes ({missing} unmatched) -> {lua_path}", file=sys.stderr)
+    print(f"enriched {matched} item recipes ({multi_yield} multi-yield, {missing} unmatched) -> {lua_path}",
+          file=sys.stderr)
 
 
 def emit(rec):
@@ -257,6 +276,8 @@ def emit(rec):
         parts.append(f"rep={lua_str(rec['rep'])}")
     if rec.get("cd"):
         parts.append(f"cd={rec['cd']}")
+    if rec.get("y") and rec["y"] > 1:
+        parts.append(f"y={rec['y']}")
     parts.append("rg={%s}" % ",".join(map(str, rec["rg"])))
     return "{" + ",".join(parts) + "}"
 
@@ -284,6 +305,9 @@ def main():
                 if secs:
                     r["cd"] = secs
                     print(f"  cooldown {secs // 3600}h {secs % 3600 // 60}m: {r['n']}", file=sys.stderr)
+                y = wago["yields"].get(sp)
+                if y and y > 1:
+                    r["y"] = y
         total += len(recs)
         rows = "\n".join("    " + emit(r) + "," for r in recs)
         blocks.append(f'D.recipes["{key}"] = {{ -- skill line {line}, {len(recs)} recipes\n{rows}\n}}\n')
@@ -294,7 +318,7 @@ def main():
         f.write("-- Do not edit by hand; re-run the script instead.\n")
         f.write("-- k = {orange(learn), yellow, green, grey}; orange is nil for trainer recipes (estimated in game).\n")
         f.write('-- src: "t" trainer, "a" automatic with rank, "b" recipe item (book=item id, req=skill, rep=reputation).\n')
-        f.write("-- sp = crafting spell id, cd = craft cooldown in seconds (from client data via wago.tools)\n")
+        f.write(WAGO_HEADER_COMMENT)
         f.write("-- rg = {reagentItemID, count, ...}\n")
         f.write("local _, ns = ...\nlocal D = ns.Data\n\n")
         f.write("D.skillLines = { alchemy=171, blacksmithing=164, enchanting=333, engineering=202,\n"

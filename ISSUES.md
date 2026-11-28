@@ -13,7 +13,7 @@ Pick one item at a time on a fresh branch, add a failing test to `Tools/dev/test
   - Include spell ID (`sp`) from DB2 data where available (or disambiguate duplicate keys) so `known`, `planned`, `trainer`, `yields`, and `freeze`/`thaw` never collide.
   - **Done when:** Every recipe in `Data/Recipes.lua` has a unique `ns.RecipeKey(rec)` and round-trips cleanly through `Scan` and `freeze`/`thaw`.
 
-- [ ] **#2 Bake craft yields into static recipe data** (`Tools/build_recipes.py`, `Data/Recipes.lua`, `Scan.lua`, `Planner.lua`)
+- [x] **#2 Bake craft yields into static recipe data** (`Tools/build_recipes.py`, `Data/Recipes.lua`, `Scan.lua`, `Planner.lua`)
   - Multi-yield recipes (dynamite/bombs making 2–3, ammo making 100–200, multi-yield cooking/potions/intermediates) default to `yield = 1` until the player opens that profession window, distorting intermediate costs, sale credits, and prep craft quantities.
   - Also `Scan.TradeSkill` uses `quantityMin` instead of the expected average `(quantityMin + quantityMax) / 2` for variable-yield crafts.
   - Extract craft yields from `SpellEffect.csv` in `build_recipes.py` and fall back to scanned yields only as an override.

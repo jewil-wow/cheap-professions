@@ -1,5 +1,5 @@
 -- Scan.lua: learn facts the static data lacks from the game's own windows.
---   * profession window: which recipes this character knows, and how many items a craft makes
+--   * profession window: which recipes this character knows, and live craft yield overrides
 --   * trainer window: the exact skill needed to learn each trainer recipe, and its cost
 local _, ns = ...
 
@@ -72,8 +72,17 @@ function Scan.TradeSkill()
                 known[key] = true
                 matched = matched + 1
             end
-            local made = okS and schem and schem.quantityMin
-            if made and made > 1 then yields[key] = made end
+            local qMin = okS and schem and schem.quantityMin
+            local qMax = okS and schem and schem.quantityMax
+            if qMin and qMin > 0 then
+                local made = (qMax and qMax > qMin) and ((qMin + qMax) / 2) or qMin
+                local base = rec.y or 1
+                if math.abs(made - base) > 1e-6 then
+                    yields[key] = made
+                else
+                    yields[key] = nil
+                end
+            end
         end
     end
     -- Only overwrite when the list actually loaded (it can be empty on the first event).

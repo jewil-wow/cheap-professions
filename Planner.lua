@@ -108,7 +108,7 @@ end
 
 local function yieldOf(prof, rec)
     local y = ns.db.yields[prof] and ns.db.yields[prof][ns.RecipeKey(rec)]
-    return y or 1
+    return y or rec.y or 1
 end
 
 local function addTo(t, k, v)
