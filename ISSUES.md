@@ -8,7 +8,7 @@ Pick one item at a time on a fresh branch, add a failing test to `Tools/dev/test
 
 ## Foundations & Data Model
 
-- [ ] **#1 Unique recipe keys & spell IDs for item-producing recipes** (`Tools/build_recipes.py`, `Data/Recipes.lua`, `Core.lua`, `Scan.lua`, `UI.lua`)
+- [x] **#1 Unique recipe keys & spell IDs for item-producing recipes** (`Tools/build_recipes.py`, `Data/Recipes.lua`, `Core.lua`, `Scan.lua`, `UI.lua`)
   - `ns.RecipeKey(rec)` keys item recipes only by output item ID (`"i:" .. rec.i`), which collides when multiple recipes produce the same item (e.g. Alchemy *Essence of Earth* ×2, *Essence of Water* ×2). Duplicate names (*Faction Banner* ×2 in Tailoring) also collide in `Scan.Index().byName`.
   - Include spell ID (`sp`) from DB2 data where available (or disambiguate duplicate keys) so `known`, `planned`, `trainer`, `yields`, and `freeze`/`thaw` never collide.
   - **Done when:** Every recipe in `Data/Recipes.lua` has a unique `ns.RecipeKey(rec)` and round-trips cleanly through `Scan` and `freeze`/`thaw`.

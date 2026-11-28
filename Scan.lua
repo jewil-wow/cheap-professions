@@ -6,18 +6,27 @@ local _, ns = ...
 local Scan = {}
 ns.Scan = Scan
 
--- index[prof] = { byItem = {itemID = rec}, bySpell = {spellID = rec}, byName = {lowername = rec} }
+-- index[prof] = { byItem = {itemID = {rec, ...}}, bySpell = {spellID = rec}, byName = {lowername = {rec, ...}} }
 local index = {}
 function Scan.Index(prof)
     if index[prof] then return index[prof] end
     local ix = { byItem = {}, bySpell = {}, byName = {} }
     for _, rec in ipairs(ns.Data.recipes[prof] or {}) do
-        if rec.i then ix.byItem[rec.i] = ix.byItem[rec.i] or rec end
         if rec.sp then ix.bySpell[rec.sp] = rec end
-        ix.byName[rec.n:lower()] = ix.byName[rec.n:lower()] or rec
+        if rec.i then
+            ix.byItem[rec.i] = ix.byItem[rec.i] or {}
+            table.insert(ix.byItem[rec.i], rec)
+        end
+        local lname = rec.n:lower()
+        ix.byName[lname] = ix.byName[lname] or {}
+        table.insert(ix.byName[lname], rec)
     end
     index[prof] = ix
     return ix
+end
+
+local function onlyOne(list)
+    return list and #list == 1 and list[1] or nil
 end
 
 local function tradeSkillProf()
@@ -54,7 +63,9 @@ function Scan.TradeSkill()
         local info = C.GetRecipeInfo(id)
         local okS, schem = pcall(C.GetRecipeSchematic, id, false)
         local out = okS and schem and schem.outputItemID
-        local rec = ix.bySpell[id] or (out and ix.byItem[out]) or (info and info.name and ix.byName[info.name:lower()])
+        local rec = ix.bySpell[id]
+            or (out and onlyOne(ix.byItem[out]))
+            or (info and info.name and onlyOne(ix.byName[info.name:lower()]))
         if rec then
             local key = ns.RecipeKey(rec)
             if info and info.learned then
@@ -77,6 +88,23 @@ ns.On("TRADE_SKILL_SHOW", scanSoon)
 ns.On("TRADE_SKILL_LIST_UPDATE", scanSoon)
 ns.On("NEW_RECIPE_LEARNED", scanSoon)
 
+local function trainerMatches(prof, i, name)
+    local list = Scan.Index(prof).byName[name:lower()]
+    if not list then return end
+    if #list > 1 and GetTrainerServiceItemLink then
+        local link = GetTrainerServiceItemLink(i)
+        local itemID = link and tonumber(link:match("item:(%d+)"))
+        if itemID then
+            local matched = {}
+            for _, rec in ipairs(list) do
+                if rec.i == itemID then matched[#matched + 1] = rec end
+            end
+            if #matched > 0 then return matched end
+        end
+    end
+    return list
+end
+
 local lastTrainerCount
 function Scan.Trainer()
     if not (GetNumTrainerServices and GetTrainerServiceSkillReq) then return end
@@ -87,13 +115,17 @@ function Scan.Trainer()
         local skillName, skillRank = GetTrainerServiceSkillReq(i)
         local prof = skillName and ns.ProfKey(skillName)
         if prof and name then
-            local rec = Scan.Index(prof).byName[name:lower()]
-            if rec then
+            local recs = trainerMatches(prof, i, name)
+            if recs then
                 ns.db.trainer[prof] = ns.db.trainer[prof] or {}
-                ns.db.trainer[prof][ns.RecipeKey(rec)] = {
-                    skill = skillRank or 0,
-                    cost = GetTrainerServiceCost and GetTrainerServiceCost(i) or nil,
-                }
+                local skill = skillRank or 0
+                local cost = GetTrainerServiceCost and GetTrainerServiceCost(i) or nil
+                for _, rec in ipairs(recs) do
+                    ns.db.trainer[prof][ns.RecipeKey(rec)] = {
+                        skill = skill,
+                        cost = cost,
+                    }
+                end
                 updated = updated + 1
             end
         end

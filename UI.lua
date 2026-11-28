@@ -1012,23 +1012,44 @@ local function freeze(v, prof)
     return out
 end
 
+local function buildByKey(prof)
+    local byKey, itemCounts, byItem = {}, {}, {}
+    for _, rec in ipairs(ns.Data.recipes[prof] or {}) do
+        byKey[ns.RecipeKey(rec)] = rec
+        if rec.i then
+            itemCounts[rec.i] = (itemCounts[rec.i] or 0) + 1
+            byItem[rec.i] = rec
+        end
+    end
+    -- Also accept unambiguous legacy "i:<itemID>" keys from plans saved before spell-ID keys.
+    for itemID, n in pairs(itemCounts) do
+        if n == 1 then
+            local legacy = "i:" .. itemID
+            if not byKey[legacy] then byKey[legacy] = byItem[itemID] end
+        end
+    end
+    return byKey
+end
+
 local function thaw(v, byKey)
     if type(v) ~= "table" then return v end
-    if v.__rec then return byKey[v.__rec] end
+    if v.__rec then
+        local rec = byKey[v.__rec]
+        if not rec then error("unresolved recipe key: " .. tostring(v.__rec)) end
+        return rec
+    end
     local out = {}
     for k, x in pairs(v) do out[k] = thaw(x, byKey) end
     return out
 end
 
-UI._freeze, UI._thaw = freeze, thaw -- for the offline test
+UI._freeze, UI._thaw, UI._byKey = freeze, thaw, buildByKey -- for the offline test
 
 local function savedPlan(prof)
     if live[prof] then return live[prof] end
     local stored = ns.cdb.plans and ns.cdb.plans[prof]
     if not stored then return end
-    local byKey = {}
-    for _, rec in ipairs(ns.Data.recipes[prof] or {}) do byKey[ns.RecipeKey(rec)] = rec end
-    local ok, plan = pcall(thaw, stored, byKey)
+    local ok, plan = pcall(thaw, stored, buildByKey(prof))
     if ok and plan and plan.steps then
         live[prof] = plan
         return plan

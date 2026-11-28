@@ -126,6 +126,7 @@ function GetNumTrainerServices() return #mockTrainerServices end
 function GetTrainerServiceInfo(i) local s = mockTrainerServices[i] return s and s.name end
 function GetTrainerServiceSkillReq(i) local s = mockTrainerServices[i] return s and s.skill, s and s.rank end
 function GetTrainerServiceCost(i) local s = mockTrainerServices[i] return s and s.cost end
+function GetTrainerServiceItemLink(i) local s = mockTrainerServices[i] return s and s.link end
 
 Auctionator = {
     SavedState = {},
@@ -580,6 +581,163 @@ test("smoke: all 7 professions plan 1->300 cleanly, render, and freeze/thaw", fu
         local thawed = ns.UI._thaw(frozen, byKey)
         eq(#ns.UI.Render(thawed), #lines, prof .. " freeze/thaw parity")
     end
+end)
+
+-- =========================================================================
+-- 7. Regression tests (ISSUES.md)
+-- =========================================================================
+local function findRecipeByBook(prof, bookID)
+    for _, rec in ipairs(ns.Data.recipes[prof]) do
+        if rec.book == bookID then return rec end
+    end
+end
+
+local function findRecipeByItem(prof, itemID)
+    for _, rec in ipairs(ns.Data.recipes[prof]) do
+        if rec.i == itemID then return rec end
+    end
+end
+
+test("issue #1: every recipe in Data/Recipes.lua has a unique RecipeKey per profession", function()
+    for prof, list in pairs(ns.Data.recipes) do
+        local seen = {}
+        for _, rec in ipairs(list) do
+            local key = ns.RecipeKey(rec)
+            ok(type(key) == "string" and key ~= "", prof .. ": RecipeKey must be a non-empty string")
+            if seen[key] then
+                error(("%s: duplicate RecipeKey %q shared by %q (book=%s) and %q (book=%s)"):format(
+                    prof, key, seen[key].n, tostring(seen[key].book), rec.n, tostring(rec.book)))
+            end
+            seen[key] = rec
+        end
+    end
+end)
+
+test("issue #1: duplicate-output recipes do not collide in known, planned, or freeze/thaw", function()
+    local fireToEarth = assert(findRecipeByBook("alchemy", 13483), "Transmute Fire to Earth")
+    local lifeToEarth = assert(findRecipeByBook("alchemy", 13488), "Transmute Life to Earth")
+    ok(ns.RecipeKey(fireToEarth) ~= ns.RecipeKey(lifeToEarth), "Essence of Earth recipes have distinct keys")
+
+    -- Marking only Fire->Earth as known must not mark Life->Earth as known
+    local known = { [ns.RecipeKey(fireToEarth)] = true }
+    local _, howFire = ns.Planner.Acquisition("alchemy", fireToEarth, known, nil)
+    local _, howLife = ns.Planner.Acquisition("alchemy", lifeToEarth, known, nil)
+    eq(howFire, "known", "Fire->Earth is known")
+    ok(howLife ~= "known", "Life->Earth must not be marked known")
+
+    -- Marking only Fire->Earth as planned must not mark Life->Earth as planned
+    local planned = { [ns.RecipeKey(fireToEarth)] = true }
+    local _, howFireP = ns.Planner.Acquisition("alchemy", fireToEarth, {}, planned)
+    local _, howLifeP = ns.Planner.Acquisition("alchemy", lifeToEarth, {}, planned)
+    eq(howFireP, "planned", "Fire->Earth is planned")
+    ok(howLifeP ~= "planned", "Life->Earth must not be marked planned")
+
+    -- Freeze/thaw must preserve the exact recipe object for both entries
+    local sample = { steps = { { rec = fireToEarth }, { rec = lifeToEarth } } }
+    local frozen = ns.UI._freeze(sample, "alchemy")
+    local byKey = {}
+    for _, rec in ipairs(ns.Data.recipes.alchemy) do byKey[ns.RecipeKey(rec)] = rec end
+    local thawed = ns.UI._thaw(frozen, byKey)
+    eq(thawed.steps[1].rec, fireToEarth, "thawed step 1 preserves Fire->Earth")
+    eq(thawed.steps[2].rec, lifeToEarth, "thawed step 2 preserves Life->Earth")
+end)
+
+test("issue #1: Scan.TradeSkill distinguishes duplicate-output recipes by spell ID", function()
+    local fireToEarth = assert(findRecipeByBook("alchemy", 13483), "Transmute Fire to Earth")
+    local lifeToEarth = assert(findRecipeByBook("alchemy", 13488), "Transmute Life to Earth")
+    ok(fireToEarth.sp and lifeToEarth.sp, "duplicate-output item recipes must have spell IDs (sp)")
+    ok(fireToEarth.sp ~= lifeToEarth.sp, "duplicate-output item recipes must have distinct spell IDs")
+
+    mockTradeSkill = {
+        prof = "Alchemy",
+        linked = false,
+        recipes = {
+            [lifeToEarth.sp] = { name = "Transmute: Life to Earth", item = 7076, learned = true, yield = 1 },
+        },
+    }
+    ns.Scan.TradeSkill()
+    eq(ns.cdb.known.alchemy[ns.RecipeKey(lifeToEarth)], true, "learned Life->Earth recorded as known")
+    eq(ns.cdb.known.alchemy[ns.RecipeKey(fireToEarth)], nil, "unlearned Fire->Earth not marked known")
+end)
+
+test("issue #1: Scan.Trainer records skill and cost for all duplicate-name recipes", function()
+    local banner1 = assert(findRecipeByItem("tailoring", 279972), "Faction Banner 279972")
+    local banner2 = assert(findRecipeByItem("tailoring", 279973), "Faction Banner 279973")
+    mockTrainerServices = {
+        { name = "Faction Banner", skill = "Tailoring", rank = 20, cost = 500 },
+        { name = "Faction Banner", skill = "Tailoring", rank = 20, cost = 500 },
+    }
+    ns.Scan.Trainer()
+
+    local info1 = ns.db.trainer.tailoring and ns.db.trainer.tailoring[ns.RecipeKey(banner1)]
+    local info2 = ns.db.trainer.tailoring and ns.db.trainer.tailoring[ns.RecipeKey(banner2)]
+    ok(info1, "first Faction Banner recorded in ns.db.trainer")
+    ok(info2, "second Faction Banner recorded in ns.db.trainer")
+    eq(info1.cost, 500, "first Faction Banner trainer cost")
+    eq(info2.cost, 500, "second Faction Banner trainer cost")
+
+    local cost2, how2 = ns.Planner.Acquisition("tailoring", banner2, {}, nil)
+    eq(how2, "trainer", "second Faction Banner acquisition = trainer")
+    eq(cost2, 500, "second Faction Banner uses scanned trainer fee")
+end)
+
+test("issue #1: ADDON_LOADED migrates unambiguous legacy i: keys and drops ambiguous ones", function()
+    local bolt = assert(findRecipe("tailoring", "Bolt of Linen Cloth"))
+    local bag = assert(findRecipe("tailoring", "Linen Bag"))
+    local fireToEarth = assert(findRecipeByBook("alchemy", 13483))
+    local lifeToEarth = assert(findRecipeByBook("alchemy", 13488))
+
+    jewilUI_ProfessionLevelerDB = {
+        trainer = { tailoring = { ["i:" .. bag.i] = { skill = 45, cost = 200 } } },
+        yields = { tailoring = { ["i:" .. bolt.i] = 3, [ns.RecipeKey(bolt)] = 2 } },
+    }
+    jewilUI_ProfessionLevelerCharDB = {
+        known = {
+            tailoring = { ["i:" .. bolt.i] = true },
+            alchemy = { ["i:7076"] = true },
+        },
+        planned = {
+            tailoring = { ["i:" .. bag.i] = true },
+            alchemy = { ["i:7076"] = true },
+        },
+    }
+    onEvent(frames[1], "ADDON_LOADED", "jewilUI_ProfessionLeveler")
+
+    -- Unambiguous keys migrate to s:<sp> and old i: keys are removed
+    eq(ns.db.trainer.tailoring[ns.RecipeKey(bag)].cost, 200, "trainer migrated to spell key")
+    eq(ns.db.trainer.tailoring["i:" .. bag.i], nil, "legacy trainer key removed")
+    eq(ns.db.yields.tailoring[ns.RecipeKey(bolt)], 2, "existing spell key not overwritten by legacy key")
+    eq(ns.db.yields.tailoring["i:" .. bolt.i], nil, "legacy yield key removed")
+    eq(ns.cdb.known.tailoring[ns.RecipeKey(bolt)], true, "known migrated to spell key")
+    eq(ns.cdb.known.tailoring["i:" .. bolt.i], nil, "legacy known key removed")
+    eq(ns.cdb.planned.tailoring[ns.RecipeKey(bag)], true, "planned migrated to spell key")
+    eq(ns.cdb.planned.tailoring["i:" .. bag.i], nil, "legacy planned key removed")
+
+    -- Ambiguous legacy key i:7076 is dropped, not copied to either Essence of Earth recipe
+    eq(ns.cdb.known.alchemy["i:7076"], nil, "ambiguous known key dropped")
+    eq(ns.cdb.known.alchemy[ns.RecipeKey(fireToEarth)], nil, "Fire->Earth not guessed from ambiguous key")
+    eq(ns.cdb.known.alchemy[ns.RecipeKey(lifeToEarth)], nil, "Life->Earth not guessed from ambiguous key")
+    eq(ns.cdb.planned.alchemy["i:7076"], nil, "ambiguous planned key dropped")
+end)
+
+test("issue #1: legacy saved plans thaw unambiguous i: keys and reject ambiguous ones; trainer link disambiguates", function()
+    local bolt = assert(findRecipe("tailoring", "Bolt of Linen Cloth"))
+    local thawed = ns.UI._thaw({ steps = { { rec = { __rec = "i:" .. bolt.i } } } }, ns.UI._byKey("tailoring"))
+    eq(thawed.steps[1].rec, bolt, "unambiguous legacy i: key thaws cleanly")
+
+    local okAmbig = pcall(ns.UI._thaw, { steps = { { rec = { __rec = "i:7076" } } } }, ns.UI._byKey("alchemy"))
+    eq(okAmbig, false, "ambiguous legacy i:7076 fails thaw so savedPlan discards stale plan")
+
+    local banner1 = assert(findRecipeByItem("tailoring", 279972))
+    local banner2 = assert(findRecipeByItem("tailoring", 279973))
+    mockTrainerServices = {
+        { name = "Faction Banner", skill = "Tailoring", rank = 20, cost = 400, link = "|Hitem:279972|h[Faction Banner]|h" },
+        { name = "Faction Banner", skill = "Tailoring", rank = 25, cost = 600, link = "|Hitem:279973|h[Faction Banner]|h" },
+    }
+    ns.Scan.Trainer()
+    eq(ns.db.trainer.tailoring[ns.RecipeKey(banner1)].cost, 400, "banner 1 cost matched via item link")
+    eq(ns.db.trainer.tailoring[ns.RecipeKey(banner2)].cost, 600, "banner 2 cost matched via item link")
+    eq(ns.db.trainer.tailoring[ns.RecipeKey(banner2)].skill, 25, "banner 2 skill matched via item link")
 end)
 
 -- Summary ------------------------------------------------------------------

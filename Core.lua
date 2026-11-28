@@ -52,7 +52,56 @@ function ns.Print(...)
 end
 
 function ns.RecipeKey(rec)
-    return rec.i and ("i:" .. rec.i) or ("s:" .. rec.sp)
+    return rec.sp and ("s:" .. rec.sp) or ("i:" .. rec.i)
+end
+
+-- Map legacy "i:<itemID>" recipe keys to their new "s:<spellID>" keys when unambiguous.
+local function legacyItemKeyMap(prof)
+    local counts, byItem = {}, {}
+    for _, rec in ipairs(ns.Data.recipes[prof] or {}) do
+        if rec.i then
+            counts[rec.i] = (counts[rec.i] or 0) + 1
+            byItem[rec.i] = rec
+        end
+    end
+    local map, known = {}, {}
+    for itemID, n in pairs(counts) do
+        local oldKey = "i:" .. itemID
+        known[oldKey] = true
+        if n == 1 then
+            local newKey = ns.RecipeKey(byItem[itemID])
+            if newKey ~= oldKey then map[oldKey] = newKey end
+        end
+    end
+    return map, known
+end
+
+local function migrateRecipeKeys(rootTbl)
+    if type(rootTbl) ~= "table" then return end
+    for prof, tbl in pairs(rootTbl) do
+        if type(tbl) == "table" and ns.Data.recipes[prof] then
+            local oldKeys
+            for k in pairs(tbl) do
+                if type(k) == "string" and k:sub(1, 2) == "i:" then
+                    oldKeys = oldKeys or {}
+                    oldKeys[#oldKeys + 1] = k
+                end
+            end
+            if oldKeys then
+                local map, known = legacyItemKeyMap(prof)
+                for _, oldKey in ipairs(oldKeys) do
+                    local newKey = map[oldKey]
+                    if newKey then
+                        if tbl[newKey] == nil then tbl[newKey] = tbl[oldKey] end
+                        tbl[oldKey] = nil
+                    elseif known[oldKey] then
+                        -- Ambiguous legacy key (multiple recipes make this item): drop it.
+                        tbl[oldKey] = nil
+                    end
+                end
+            end
+        end
+    end
 end
 
 -- Profession key from a skill line id or an (English) profession name.
@@ -112,6 +161,11 @@ ns.On("ADDON_LOADED", function(name)
     applyDefaults(jewilUI_ProfessionLevelerDB, DB_DEFAULTS)
     applyDefaults(jewilUI_ProfessionLevelerCharDB, CHAR_DEFAULTS)
     ns.db, ns.cdb = jewilUI_ProfessionLevelerDB, jewilUI_ProfessionLevelerCharDB
+
+    migrateRecipeKeys(ns.db.trainer)
+    migrateRecipeKeys(ns.db.yields)
+    migrateRecipeKeys(ns.cdb.known)
+    migrateRecipeKeys(ns.cdb.planned)
 
     if not ns.db.ahSellSeeded then
         -- Items known to sell on the AH during levelling. Add more with /cp ahsell add <item>.
