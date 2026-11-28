@@ -919,6 +919,103 @@ test("issue #3: one stale profession plan does not affect other professions", fu
     ns.UI._live.tailoring = nil
 end)
 
+
+-- Issue #4: shared scarce base materials across reagents and nested prep crafts.
+test("issue #4: direct and prep-crafted reagents sharing scarce base material do not crash", function()
+    local silverContact = assert(findRecipe("engineering", "Silver Contact"))
+    -- Skill 110->111: Copper Modulator (chance 0.5 => 2 crafts) needs 4x Handful of Copper Bolts
+    -- (4 Copper Bars via prep) + 2x Copper Bar directly = 6 Copper Bars total. Only 4 exist.
+    mockBags[6219] = 1     -- Arclight Spanner already owned
+    setAH(2840, 10, 4)     -- Copper Bar: enough for Bolts OR direct bars, not both
+    setAH(2589, 10, 50)    -- Linen Cloth
+
+    -- (a) No alternative recipe: must return a clean gap with no leaked shopping items
+    local planGap = assert(ns.Planner.Build("engineering", 110, 111))
+    eq(#planGap.steps, 0, "impossible Copper Modulator is not scheduled")
+    eq(#planGap.gaps, 1, "skill 110 recorded as a gap")
+    eq(planGap.gaps[1], 110, "gap is at skill 110")
+    eq(#planGap.shopping, 0, "no partial materials leaked into shopping list")
+
+    -- (b) Valid pricier alternative exists: must skip impossible Copper Modulator and pick it
+    setAH(2842, 500, 10)   -- Silver Bar for Silver Contact (1 craft @ 500c)
+    local planAlt = assert(ns.Planner.Build("engineering", 110, 111))
+    eq(#planAlt.gaps, 0, "no gaps when valid alternative exists")
+    eq(planAlt.steps[1].rec, silverContact, "fell back to valid Silver Contact")
+    eq(findShopRow(planAlt, 2840), nil, "no Copper Bars leaked from rejected Copper Modulator")
+end)
+
+test("issue #4: nested prep craft sharing scarce base material does not silently drop reagents", function()
+    local seaforium = assert(findRecipe("engineering", "Small Seaforium Charge"))
+    -- Skill 125->126: Small Seaforium Charge (1 craft) needs 1x Copper Modulator (grey at 125).
+    -- Prep-crafting Copper Modulator needs 2x Handful of Copper Bolts (2 Copper Bars) + 1x Copper Bar
+    -- directly = 3 Copper Bars total, while only 2 Copper Bars exist on AH.
+    ns.cdb.known.engineering = { [ns.RecipeKey(seaforium)] = true }
+    mockBags[6219] = 1     -- Arclight Spanner
+    setAH(2840, 100, 2)    -- Copper Bar: only 2 available (need 3)
+    setAH(2589, 50, 50)    -- Linen Cloth
+    setAH(4364, 100, 50)   -- Coarse Blasting Powder
+    setAH(2318, 100, 50)   -- Light Leather
+
+    -- (a) Copper Modulator not on AH: prep craft is impossible, must not drop the 3rd Copper Bar
+    local planGap = assert(ns.Planner.Build("engineering", 125, 126))
+    eq(#planGap.steps, 0, "must not schedule Small Seaforium Charge with impossible prep craft")
+    eq(#planGap.gaps, 1, "skill 125 recorded as a gap")
+    eq(#planGap.shopping, 0, "no partial materials leaked into shopping list")
+
+    -- (b) Copper Modulator IS on AH (2000c): impossible prep must fall back to buying on AH
+    setAH(4363, 2000, 5)   -- Copper Modulator on AH
+    local planBuy = assert(ns.Planner.Build("engineering", 125, 126))
+    eq(#planBuy.gaps, 0, "no gaps when Copper Modulator can be bought on AH")
+    eq(planBuy.steps[1].rec, seaforium, "crafted Small Seaforium Charge")
+    local modRow = assert(findShopRow(planBuy, 4363), "bought Copper Modulator on AH")
+    eq(modRow.ah, 1, "bought 1 Copper Modulator on AH")
+    eq(findShopRow(planBuy, 2840), nil, "did not attempt partial prep craft with Copper Bars")
+end)
+
+test("issue #4: sibling prep crafts sharing scarce base material do not crash or lose reagents", function()
+    local sheep = assert(findRecipe("engineering", "Explosive Sheep"))
+    -- Skill 195->196: Explosive Sheep (chance 0.2 => 5 crafts) needs 5x Bronze Framework
+    -- (10 Bronze Bars) and 5x Whirring Bronze Gizmo (10 Bronze Bars) = 20 Bronze Bars total.
+    mockBags[6219] = 1     -- Arclight Spanner
+    setAH(2841, 100, 10)   -- Bronze Bar: enough for 5 Frameworks OR 5 Gizmos, not both
+    setAH(2319, 50, 50)    -- Medium Leather
+    setAH(2592, 50, 50)    -- Wool Cloth
+    setAH(4377, 50, 50)    -- Heavy Blasting Powder
+
+    -- (a) Neither intermediate on AH: must not crash in record
+    local planGap = assert(ns.Planner.Build("engineering", 195, 196))
+    eq(#planGap.steps, 0, "impossible Explosive Sheep is not scheduled")
+    eq(#planGap.gaps, 1, "skill 195 recorded as a gap")
+    eq(#planGap.shopping, 0, "no partial materials leaked into shopping list")
+
+    -- (b) Whirring Bronze Gizmo on AH: prep-crafts 5 Frameworks (10 Bronze Bars) and buys 5 Gizmos
+    setAH(4375, 1000, 10)  -- Whirring Bronze Gizmo on AH
+    local planMixed = assert(ns.Planner.Build("engineering", 195, 196))
+    eq(#planMixed.gaps, 0, "no gaps when second intermediate can be bought on AH")
+    eq(planMixed.steps[1].rec, sheep, "crafted Explosive Sheep")
+    local barRow = assert(findShopRow(planMixed, 2841), "bought Bronze Bars for Frameworks")
+    eq(barRow.ah, 10, "used all 10 Bronze Bars for 5 Bronze Frameworks")
+    local gizmoRow = assert(findShopRow(planMixed, 4375), "bought Whirring Bronze Gizmos on AH")
+    eq(gizmoRow.ah, 5, "bought 5 Whirring Bronze Gizmos on AH")
+end)
+
+test("issue #4: dry run does not double-count shared bagged supply across reagents", function()
+    local silverContact = assert(findRecipe("engineering", "Silver Contact"))
+    -- Skill 110->111: Copper Modulator (chance 0.5 => 2 crafts) needs 4x Bolts (4 Copper Bars) +
+    -- 2x Copper Bar + 4x Linen Cloth. With 4 free Copper Bars in bags and AH Copper Bars at 1000c,
+    -- real cost is 2040c, not 40c. Silver Contact (1x Silver Bar @ 500c) is much cheaper.
+    mockBags[6219] = 1     -- Arclight Spanner
+    mockBags[2840] = 4     -- 4 free Copper Bars in bags
+    setAH(2840, 1000, 50)  -- Additional Copper Bars cost 1000c each
+    setAH(2589, 10, 50)    -- Linen Cloth
+    setAH(2842, 500, 10)   -- Silver Bar for Silver Contact
+
+    local plan = assert(ns.Planner.Build("engineering", 110, 111))
+    eq(#plan.gaps, 0, "no gaps")
+    eq(plan.steps[1].rec, silverContact, "chose cheaper Silver Contact instead of double-counted Copper Modulator")
+    eq(plan.totals.ah, 500, "spent 500c instead of 2040c")
+end)
+
 -- Summary ------------------------------------------------------------------
 local elapsed = os.clock() * 1000
 realPrint(("\n%d passed, %d failed%s (%.0f ms)"):format(

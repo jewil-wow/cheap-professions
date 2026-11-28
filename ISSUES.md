@@ -28,7 +28,7 @@ Pick one item at a time on a fresh branch, add a failing test to `Tools/dev/test
 
 ## Bugs
 
-- [ ] **#4 Shared-reagent `INF` crash & silently dropped materials** (`Planner.lua`)
+- [x] **#4 Shared-reagent `INF` crash & silently dropped materials** (`Planner.lua`)
   - Dry-run calls (`commit = false`) in `Ctx:PointCost` and `Ctx:ReagentCost` don't tentatively track usage across multiple reagents in the same craft (or nested prep crafts). When two reagents share a limited-supply base material, dry run succeeds while `commit = true` hits `INF` — crashing in `record` (`crafts == nil`) or silently dropping reagents from the shopping list in recursive prep commits.
   - Track tentative usage within a single dry-run craft evaluation (or roll back on commit failure) and guard `PointCost`/`ReagentCost` commit return values.
   - **Done when:** Unit test where a recipe and its prep-crafted intermediate share a scarce base material never crashes and accounts for 100% of materials.

@@ -228,19 +228,53 @@ local function buySplit(st, n)
     return a * (st.ah or 0) + v * (st.vendor or 0), a, v
 end
 
--- Supply-aware cost of `qty` units of item at skill s. With commit, records usage.
+-- Savepoint / undo stack for tentative supply usage during dry runs.
+function Ctx:SaveUsage(st)
+    local u, n = self.undo, self.undoTop
+    u[n + 1] = st
+    u[n + 2] = st.usedStock
+    u[n + 3] = st.usedBags
+    u[n + 4] = st.usedAH
+    u[n + 5] = st.usedVendor
+    self.undoTop = n + 5
+end
+
+function Ctx:RevertUsage(mark)
+    local u = self.undo
+    for i = self.undoTop, mark + 1, -5 do
+        local st = u[i - 4]
+        st.usedStock = u[i - 3]
+        st.usedBags = u[i - 2]
+        st.usedAH = u[i - 1]
+        st.usedVendor = u[i]
+        u[i - 4] = nil
+    end
+    self.undoTop = mark
+end
+
+-- Supply-aware cost of `qty` units of item at skill s.
+-- When commit is false, tentatively updates st.used* (logged to self.undo) so sibling
+-- reagents in the same craft see reduced supply; callers revert self.undo after evaluating.
 function Ctx:ReagentCost(item, qty, s, depth, commit)
     local st = self:Supply(item)
     local fromStock, fromBags = freeSplit(st, qty)
     local rest = qty - fromStock - fromBags
+    local stockBefore = st.usedStock
 
     local buyCost, a, v = 0, 0, 0
     local craftCost, maker = INF, nil
+    local probeMark
     if rest > 1e-9 then
         buyCost, a, v = buySplit(st, rest)
         if depth < MAX_DEPTH then
             maker = self:Maker(item, s)
             if maker then
+                probeMark = self.undoTop
+                if fromStock > 0 or fromBags > 0 then
+                    self:SaveUsage(st)
+                    st.usedStock = st.usedStock + fromStock
+                    st.usedBags = st.usedBags + fromBags
+                end
                 local crafts = rest / yieldOf(self.prof, maker)
                 craftCost = 0
                 local rg = maker.rg
@@ -253,12 +287,28 @@ function Ctx:ReagentCost(item, qty, s, depth, commit)
     end
 
     local cost = math.min(buyCost, craftCost)
-    if cost == INF then return cost end
+    if cost == INF then
+        if probeMark then self:RevertUsage(probeMark) end
+        return cost
+    end
     if not commit then
+        if probeMark and buyCost <= craftCost then
+            self:RevertUsage(probeMark)
+            probeMark = nil
+        end
+        if not probeMark then
+            if fromStock > 0 or fromBags > 0 or a > 0 or v > 0 then
+                self:SaveUsage(st)
+                st.usedStock = st.usedStock + fromStock
+                st.usedBags = st.usedBags + fromBags
+                st.usedAH = st.usedAH + a
+                st.usedVendor = st.usedVendor + v
+            end
+        end
         -- For choosing recipes, stock that later steps still need isn't free: using it now
         -- means replacing it later. Only surplus stock costs nothing.
         if fromStock > 1e-9 and self.demand then
-            local surplus = math.max(0, (st.stock - st.usedStock) - self:FutureNeed(item, s))
+            local surplus = math.max(0, (st.stock - stockBefore) - self:FutureNeed(item, s))
             local needed = math.max(0, fromStock - surplus)
             if needed > 0 then
                 local repl = self:UnitCost(item, s, depth)
@@ -267,6 +317,8 @@ function Ctx:ReagentCost(item, qty, s, depth, commit)
         end
         return cost
     end
+
+    if probeMark then self:RevertUsage(probeMark) end
 
     st.usedStock = st.usedStock + fromStock
     st.usedBags = st.usedBags + fromBags
@@ -294,7 +346,8 @@ function Ctx:ReagentCost(item, qty, s, depth, commit)
             local rg = maker.rg
             local spentBefore = self.prepSpent or 0
             for j = 1, #rg, 2 do
-                self:ReagentCost(rg[j], rg[j + 1] * crafts, s, depth + 1, true)
+                local rc = self:ReagentCost(rg[j], rg[j + 1] * crafts, s, depth + 1, true)
+                if rc == INF then return INF end
             end
             -- this craft's own materials cost (nested extra crafts are recorded separately)
             local own = craftCost - ((self.prepSpent or 0) - spentBefore)
@@ -329,11 +382,16 @@ function Ctx:PointCost(rec, s, commit)
     local ch = Planner.Chance(rec, s)
     if ch <= 0 then return INF end
     local crafts = 1 / ch
+    local mark
+    if not commit then mark = self.undoTop end
     local c = 0
     local rg = rec.rg
     for j = 1, #rg, 2 do
         c = c + self:ReagentCost(rg[j], rg[j + 1] * crafts, s, 0, commit)
-        if c == INF then return INF end
+        if c == INF then
+            if mark then self:RevertUsage(mark) end
+            return INF
+        end
     end
     local made, credit = 0, 0
     if rec.i then
@@ -353,17 +411,24 @@ function Ctx:PointCost(rec, s, commit)
         credit = keep * repl + (made - keep) * saleU
         if commit then st.stock = st.stock + made end
     end
+    if mark then self:RevertUsage(mark) end
     return c - credit, crafts, c, made
 end
 
 -- Materials cost of a single craft of rec at skill s (a required tool). Nothing made goes to stock.
 function Ctx:OneCraft(rec, s, commit)
+    local mark
+    if not commit then mark = self.undoTop end
     local c = 0
     local rg = rec.rg
     for j = 1, #rg, 2 do
         c = c + self:ReagentCost(rg[j], rg[j + 1], s, 0, commit)
-        if c == INF then return INF end
+        if c == INF then
+            if mark then self:RevertUsage(mark) end
+            return INF
+        end
     end
+    if mark then self:RevertUsage(mark) end
     return c
 end
 
@@ -405,6 +470,7 @@ function Planner.Build(prof, startSkill, target, planned)
     local ctx = setmetatable({
         prof = prof, supply = {}, makers = {}, allowed = {}, learn = {}, learnExact = {},
         sale = {}, saleSrc = {}, itemSale = {}, itemSaleSrc = {}, itemSaleInfo = {}, acq = {}, acqHow = {},
+        undo = {}, undoTop = 0,
     }, Ctx)
 
     local candidates = {}
@@ -538,6 +604,7 @@ function Planner.Build(prof, startSkill, target, planned)
 
     local function allocate(demand)
         for _, st in pairs(ctx.supply) do resetUsage(st) end
+        ctx.undoTop = 0
         ctx.demand, ctx.consumed = demand, {}
         ctx.prepTotal, ctx.prepRec = {}, {}
 
@@ -570,6 +637,7 @@ function Planner.Build(prof, startSkill, target, planned)
             local sink, prep, batches, prepInfo = ctx.sink, ctx.prep, ctx.prepBatches, ctx.prepInfo
             ctx.prepInfo = nil
             ctx.sink, ctx.prep, ctx.prepBatches = nil, nil, nil
+            if not crafts or matsCost == INF then return false end
 
             -- Prep crafts happen first, at the current skill, and may give skill-ups.
             local prepGain = {}
@@ -630,6 +698,7 @@ function Planner.Build(prof, startSkill, target, planned)
             cur.crafts = cur.crafts + crafts
             cur.reagents = cur.reagents + matsCost
             cur.made = cur.made + made
+            return true
         end
 
         -- A required tool: already owned, bought (if it can be and that's cheaper), or crafted.
@@ -666,12 +735,16 @@ function Planner.Build(prof, startSkill, target, planned)
                 out.action = "nomats" -- a material has no AH or vendor price
                 return
             end
-            out.action = "craft"
-            record(t.rec, s, function()
+            if record(t.rec, s, function()
                 local c = ctx:OneCraft(t.rec, s, true)
+                if c == INF then return nil, INF, 0 end
                 out.cost = c
                 return 1, c, 0
-            end, true)
+            end, true) then
+                out.action = "craft"
+            else
+                out.action = "nomats"
+            end
             cur = nil
         end
 
@@ -689,10 +762,14 @@ function Planner.Build(prof, startSkill, target, planned)
                     cur = nil
                     skill = s + 1
                 else
-                    record(pick, s, function()
+                    if not record(pick, s, function()
                         local _, crafts, matsCost, made = ctx:PointCost(pick, s, true)
                         return crafts, matsCost, made
-                    end)
+                    end) then
+                        table.insert(gaps, s)
+                        cur = nil
+                        skill = s + 1
+                    end
                 end
             end
         end
