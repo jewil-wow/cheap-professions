@@ -1105,6 +1105,7 @@ test("planner: Philosopher's Stone picks costliest orange skill in 225-239 and h
     }
     local sawGreyTip = false
     for _, l in ipairs(lines) do
+        ok(stripColor(l.text or "") ~= "Required tools", "Required tools section removed from shopping list")
         if l.tip then
             tt.buf = {}
             l.tip(tt)
@@ -1115,6 +1116,17 @@ test("planner: Philosopher's Stone picks costliest orange skill in 225-239 and h
         end
     end
     ok(sawGreyTip, "rendered tooltip for grey Philosopher's Stone step")
+
+    -- Unpriced required-tool recipe still appears in Recipes table as Not on AH
+    mockAucPrice[9303] = nil
+    local planUnpriced = assert(ns.Planner.Build("alchemy", 220, 275))
+    local sawUnpricedBook = false
+    for _, l in ipairs(ns.UI.Render(planUnpriced)) do
+        if l.item == 9303 and l.cols and stripColor(l.cols[3][1]) == "Not on AH" then
+            sawUnpricedBook = true
+        end
+    end
+    ok(sawUnpricedBook, "unpriced required-tool recipe shown in Recipes table")
 end)
 
 -- Summary ------------------------------------------------------------------

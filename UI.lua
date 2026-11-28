@@ -211,7 +211,9 @@ local function render(plan)
 
     local purchase = {}
     for _, a in ipairs(plan.acquire) do
-        if a.how == "AH" or a.how == "vendor" then purchase[#purchase + 1] = a end
+        if a.how == "AH" or a.how == "vendor" or (a.how == "unpriced" and a.rec.book) then
+            purchase[#purchase + 1] = a
+        end
     end
     if #purchase > 0 then
         strong("Recipes")
@@ -224,56 +226,18 @@ local function render(plan)
             { MUT .. "Price" .. R, R3, RW3, "RIGHT" },
         }, nil, "top")
         for _, a in ipairs(purchase) do
-            local note = a.how == "vendor" and (GRY .. " (vendor price you've seen)" .. R) or ""
-            addCols({
-                { tostring(a.learn), R1, RW1, "LEFT" }, { Name(a.rec.book), R2, RW2, "LEFT", true },
-                { Money(a.cost) .. note, R3, RW3, "RIGHT", true },
-            }, nil, true)
-            L[#L].item = a.rec.book
-        end
-        add()
-    end
-
-    if plan.tools and #plan.tools > 0 then
-        strong("Required tools")
-        add(GRY .. "Tools you have to carry to craft later recipes. The plan includes them even when they aren't the cheapest skill-up." .. R)
-        add()
-        local T1, T2, T3 = 0, 62, 262
-        local TW1, TW2, TW3 = 62, 200, 328
-        addCols({
-            { MUT .. "Skill" .. R, T1, TW1, "LEFT" }, { MUT .. "Tool" .. R, T2, TW2, "LEFT" },
-            { MUT .. "Plan" .. R, T3, TW3, "LEFT" },
-        }, nil, "top")
-        for _, tl in ipairs(plan.tools) do
-            local what
-            if tl.action == "have" then
-                what = GRN .. "Already in your bags or bank" .. R
-            elseif tl.action == "buy" then
-                what = ("Buy one on the AH (%s), cheaper than crafting it. %s"):format(Money(tl.cost),
-                    tl.by > tl.at and ("Have it by " .. tl.by .. ".") or "You need it now.")
-            elseif tl.action == "craft" then
-                what = "Craft one (in Step 4)"
-                if tl.boe then
-                    what = what .. (tl.buyCost and (", cheaper than buying it (%s)"):format(Money(tl.buyCost))
-                        or ", none on the AH")
-                else
-                    what = what .. GRY .. ", soulbound so it can't be bought" .. R
-                end
-                if tl.how == "unpriced" and tl.rec.book then
-                    what = what .. "\n" .. RED .. Name(tl.rec.book) .. " isn't taught by trainers and isn't on the AH: find it (vendor or drop) before " .. tl.at .. "." .. R
-                elseif (tl.how == "AH" or tl.how == "vendor") and tl.rec.book then
-                    what = what .. "\n" .. GRY .. "Needs " .. Name(tl.rec.book) .. " (in Recipes above)." .. R
-                end
-            elseif tl.action == "nomats" then
-                what = RED .. "Can't plan the craft: a material has no AH or vendor price. Get one anyway." .. R
+            local price
+            if a.how == "unpriced" then
+                price = RED .. "Not on AH" .. R
             else
-                what = RED .. "Can't plan the craft (" .. tostring(tl.how) .. "). Get one anyway." .. R
+                local note = a.how == "vendor" and (GRY .. " (vendor price you've seen)" .. R) or ""
+                price = Money(a.cost) .. note
             end
             addCols({
-                { tostring(tl.at), T1, TW1, "LEFT" }, { Name(tl.item), T2, TW2, "LEFT", true },
-                { what, T3, TW3, "LEFT", true },
+                { tostring(a.learn), R1, RW1, "LEFT" }, { Name(a.rec.book), R2, RW2, "LEFT", true },
+                { price, R3, RW3, "RIGHT", true },
             }, nil, true)
-            L[#L].item = tl.item
+            L[#L].item = a.rec.book
         end
         add()
     end
