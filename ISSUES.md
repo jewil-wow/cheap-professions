@@ -48,7 +48,7 @@ Pick one item at a time on a fresh branch, add a failing test to `Tools/dev/test
   - Either display trainer fees in the breakdown (e.g. a separate `Trainer fees:` line or an itemized row) or clearly label the split.
   - **Done when:** Sum of itemized recipe/trainer costs matches the Step 3 statement summary.
 
-- [ ] **#8 Clicking `Re-plan` wipes a custom `Start skill`** (`UI.lua`)
+- [x] **#8 Clicking `Re-plan` wipes a custom `Start skill`** (`UI.lua`)
   - Pressing Enter on `Start skill` builds a plan with `plan.start == typed`, so a subsequent click on **Re-plan** sees `typed == plan.start` and resets `state.start = nil`, reverting to your character's current skill.
   - Track explicitly whether the user typed a custom start skill (clear only when blanking the box or switching tabs).
   - **Done when:** Custom start skill persists across `Re-plan` clicks until cleared.

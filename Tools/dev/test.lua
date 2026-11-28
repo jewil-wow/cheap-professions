@@ -34,19 +34,82 @@ end
 
 -- WoW & Auctionator stubs --------------------------------------------------
 local noop = function() end
-local function stubObject()
+local function stubObject(frameType, name, parent)
     local scripts = {}
-    return setmetatable({ scripts = scripts }, {
+    local obj = {
+        scripts = scripts,
+        _type = frameType,
+        _name = name,
+        _parent = parent,
+        _shown = true,
+        _w = 660,
+        _h = 600,
+        _text = "",
+        _checked = false,
+        _val = 0,
+        _min = 0,
+        _max = 0,
+    }
+    local methods = {
+        SetScript = function(self, ev, fn) scripts[ev] = fn end,
+        GetScript = function(self, ev) return scripts[ev] end,
+        HookScript = function(self, ev, fn)
+            local prev = scripts[ev]
+            scripts[ev] = prev and function(...) prev(...) fn(...) end or fn
+        end,
+        GetParent = function(self) return self._parent end,
+        Show = function(self)
+            self._shown = true
+            if scripts.OnShow then scripts.OnShow(self) end
+        end,
+        Hide = function(self) self._shown = false end,
+        SetShown = function(self, b) self._shown = b and true or false end,
+        IsShown = function(self) return self._shown end,
+        SetSize = function(self, w, h) self._w, self._h = w, h end,
+        SetWidth = function(self, w) self._w = w end,
+        SetHeight = function(self, h) self._h = h end,
+        GetWidth = function(self) return self._w end,
+        GetHeight = function(self) return self._h end,
+        GetLeft = function() return 0 end,
+        GetTop = function() return 0 end,
+        SetText = function(self, s)
+            self._text = tostring(s or "")
+            if self._type == "EditBox" and scripts.OnTextChanged then
+                scripts.OnTextChanged(self, false)
+            end
+        end,
+        GetText = function(self) return self._text end,
+        SetChecked = function(self, v) self._checked = v and true or false end,
+        GetChecked = function(self) return self._checked end,
+        SetValue = function(self, v) self._val = v end,
+        GetValue = function(self) return self._val end,
+        SetMinMaxValues = function(self, lo, hi) self._min, self._max = lo, hi end,
+        GetMinMaxValues = function(self) return self._min, self._max end,
+        IsMouseOver = function() return false end,
+        HasFocus = function() return false end,
+        SetFont = function() return true end,
+        GetStringWidth = function() return 50 end,
+        GetStringHeight = function() return 14 end,
+        CreateTexture = function(self) return stubObject("Texture", nil, self) end,
+        CreateFontString = function(self) return stubObject("FontString", nil, self) end,
+    }
+    return setmetatable(obj, {
         __index = function(_, k)
-            if k == "SetScript" then return function(_, name, fn) scripts[name] = fn end end
-            if k == "GetScript" then return function(_, name) return scripts[name] end end
-            return noop
+            if methods[k] ~= nil then return methods[k] end
+            if type(k) == "string" and k:match("^[A-Z]") then return noop end
         end,
     })
 end
 
 local frames = {}
-function CreateFrame() local f = stubObject() frames[#frames + 1] = f return f end
+function CreateFrame(frameType, name, parent)
+    local f = stubObject(frameType, name, parent)
+    frames[#frames + 1] = f
+    return f
+end
+function CreateFont(name) return stubObject("Font", name) end
+function IsControlKeyDown() return false end
+function IsShiftKeyDown() return false end
 C_Timer = { After = function(_, fn) fn() end }
 function CopyTable(t) local r = {} for k, v in pairs(t) do r[k] = type(v) == "table" and CopyTable(v) or v end return r end
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -172,6 +235,12 @@ local function resetEnv()
     Auctionator.SavedState = {}
     jewilUI_ProfessionLevelerDB = nil
     jewilUI_ProfessionLevelerCharDB = nil
+    if ns.UI and ns.UI._live then
+        for k in pairs(ns.UI._live) do ns.UI._live[k] = nil end
+    end
+    for _, f in ipairs(frames) do
+        if f._name == "jewilUI_ProfessionLevelerFrame" then f:Hide() end
+    end
     onEvent(frames[1], "ADDON_LOADED", "jewilUI_ProfessionLeveler")
 end
 
@@ -1405,6 +1474,166 @@ test("issue #6: ADDON_LOADED prunes already-known recipes from planned", functio
 
     eq(ns.cdb.planned.alchemy[keyAgility], nil, "already-known recipe pruned from planned on load")
     eq(ns.cdb.planned.alchemy[keySwift], true, "unlearned planned recipe kept on load")
+end)
+
+-- Issue #8: clicking Re-plan must preserve a custom Start skill until cleared or tab-switched.
+local function uiWidgets()
+    local editBoxes, replanBtn, tabsByName = {}, nil, {}
+    for _, f in ipairs(frames) do
+        if f._type == "EditBox" then
+            editBoxes[#editBoxes + 1] = f
+        elseif f._type == "Button" then
+            local txt = f:GetText()
+            if txt == "Re-plan" then
+                replanBtn = f
+            elseif txt ~= "" then
+                tabsByName[txt] = f
+            end
+        end
+    end
+    return {
+        startBox = assert(editBoxes[1], "startBox not found"),
+        targetBox = assert(editBoxes[2], "targetBox not found"),
+        replan = assert(replanBtn, "Re-plan button not found"),
+        tabs = tabsByName,
+    }
+end
+
+local function typeInBox(box, text)
+    box._text = tostring(text or "")
+    local onChange = box:GetScript("OnTextChanged")
+    if onChange then onChange(box, true) end
+end
+
+local function pressEnter(box)
+    local fn = assert(box:GetScript("OnEnterPressed"), "OnEnterPressed script missing")
+    fn(box)
+end
+
+local function click(btn)
+    local fn = assert(btn:GetScript("OnClick"), "OnClick script missing")
+    fn(btn)
+end
+
+local function seedTailoringAndAlchemyPrices()
+    local items, books = allKnownItems()
+    for id in pairs(items) do
+        setAH(id, books[id] and 20000 or 200, 1000)
+    end
+end
+
+test("issue #8: custom Start skill entered via Enter persists across Re-plan clicks", function()
+    seedTailoringAndAlchemyPrices()
+    mockCharProfs = { { name = "Tailoring", rank = 50, maxRank = 150, line = 197 } }
+
+    ns.UI.Show("tailoring")
+    eq(ns.UI._live.tailoring.start, 50, "initial plan uses character current skill")
+
+    local w = uiWidgets()
+    typeInBox(w.startBox, "150")
+    pressEnter(w.startBox)
+    eq(ns.UI._live.tailoring.start, 150, "Enter builds plan from custom start skill 150")
+
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 150, "first Re-plan click keeps custom start skill 150")
+
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 150, "second Re-plan click keeps custom start skill 150")
+end)
+
+test("issue #8: custom Start skill typed before Re-plan persists across repeated Re-plan clicks", function()
+    seedTailoringAndAlchemyPrices()
+    mockCharProfs = { { name = "Tailoring", rank = 50, maxRank = 150, line = 197 } }
+
+    ns.UI.Show("tailoring")
+    eq(ns.UI._live.tailoring.start, 50, "initial plan uses character current skill")
+
+    local w = uiWidgets()
+    typeInBox(w.startBox, "150")
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 150, "first Re-plan uses newly typed custom start skill 150")
+
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 150, "second Re-plan still keeps custom start skill 150")
+end)
+
+test("issue #8: custom Start skill from slash command persists across Re-plan clicks", function()
+    seedTailoringAndAlchemyPrices()
+    mockCharProfs = { { name = "Tailoring", rank = 50, maxRank = 150, line = 197 } }
+
+    SlashCmdList.JEWILUI_PROFESSIONLEVELER("tailoring 150")
+    eq(ns.UI._live.tailoring.start, 150, "slash command builds plan from custom start skill 150")
+
+    local w = uiWidgets()
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 150, "Re-plan keeps slash-command custom start skill 150")
+end)
+
+test("issue #8: blanking Start skill or switching tabs clears custom override; default tracks skill-ups", function()
+    seedTailoringAndAlchemyPrices()
+    mockCharProfs = {
+        { name = "Tailoring", rank = 50, maxRank = 150, line = 197 },
+        { name = "Alchemy", rank = 80, maxRank = 150, line = 171 },
+    }
+
+    ns.UI.Show("tailoring")
+    local w = uiWidgets()
+
+    -- Without a custom start skill, leveling up and clicking Re-plan picks up the new character skill
+    mockCharProfs[1].rank = 75
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 75, "Re-plan without custom start tracks increased character skill")
+
+    -- Setting a custom start skill, then blanking the box and clicking Re-plan reverts to current skill
+    typeInBox(w.startBox, "150")
+    pressEnter(w.startBox)
+    eq(ns.UI._live.tailoring.start, 150, "custom start skill 150 active")
+    typeInBox(w.startBox, "")
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 75, "blanking Start skill and clicking Re-plan reverts to current skill")
+
+    -- Setting a custom start skill, then blanking the box and pressing Enter reverts to current skill
+    typeInBox(w.startBox, "150")
+    pressEnter(w.startBox)
+    eq(ns.UI._live.tailoring.start, 150, "custom start skill 150 active again")
+    typeInBox(w.startBox, "")
+    pressEnter(w.startBox)
+    eq(ns.UI._live.tailoring.start, 75, "blanking Start skill and pressing Enter reverts to current skill")
+
+    -- Setting a custom start skill on Tailoring and switching to Alchemy clears the override
+    typeInBox(w.startBox, "150")
+    pressEnter(w.startBox)
+    eq(ns.UI._live.tailoring.start, 150, "custom start skill 150 set on Tailoring")
+    click(assert(w.tabs["Alchemy"], "Alchemy tab not found"))
+    eq(ns.UI._live.alchemy.start, 80, "switching to Alchemy tab uses Alchemy current skill, not 150")
+    mockCharProfs[2].rank = 95
+    click(w.replan)
+    eq(ns.UI._live.alchemy.start, 95, "Re-plan after tab switch continues tracking current skill")
+end)
+
+test("issue #8: custom Start skill updates when re-typed and survives window toggle", function()
+    seedTailoringAndAlchemyPrices()
+    mockCharProfs = { { name = "Tailoring", rank = 50, maxRank = 150, line = 197 } }
+
+    ns.UI.Show("tailoring")
+    local w = uiWidgets()
+    eq(w.startBox:GetText(), "50", "startBox displays current plan start")
+
+    -- Set custom 150, then update to 200 by typing + Re-plan
+    typeInBox(w.startBox, "150")
+    pressEnter(w.startBox)
+    eq(ns.UI._live.tailoring.start, 150, "custom start 150 active")
+    eq(w.startBox:GetText(), "150", "startBox displays custom start 150")
+
+    typeInBox(w.startBox, "200")
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 200, "re-typing custom start updates to 200")
+
+    -- Closing and reopening the window with /cp preserves custom start across Re-plan
+    ns.UI.Toggle()
+    ns.UI.Toggle()
+    click(w.replan)
+    eq(ns.UI._live.tailoring.start, 200, "Re-plan after hide/reopen still keeps custom start 200")
 end)
 
 -- Summary ------------------------------------------------------------------

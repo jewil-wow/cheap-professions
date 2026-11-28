@@ -429,7 +429,7 @@ UI.Render = render
 ---------------------------------------------------------------------------
 local frame, content, startBox, targetBox, scroll
 local rows = {}
-local state = { prof = nil, start = nil }
+local state = { prof = nil, start = nil, startEdited = false }
 
 -- Target skill per profession, remembered across sessions.
 local function getTarget(prof)
@@ -781,6 +781,7 @@ local function build()
         b:SetScript("OnClick", function()
             state.prof = prof
             state.start = nil
+            state.startEdited = false
             scroll:ScrollToTop()
             UI.Refresh() -- shows the saved plan, or builds one if there is none
         end)
@@ -793,8 +794,12 @@ local function build()
     startBox = Skin.EditBox(f, 48, 24)
     startBox:SetPoint("LEFT", label, "RIGHT", 8, 0)
     startBox:SetNumeric(true)
+    startBox:SetScript("OnTextChanged", function(_, userInput)
+        if userInput then state.startEdited = true end
+    end)
     startBox:SetScript("OnEnterPressed", function(self)
         state.start = tonumber(self:GetText())
+        state.startEdited = false
         self:ClearFocus()
         UI.Replan()
     end)
@@ -828,10 +833,12 @@ local function build()
     local refresh = Skin.Button(f, "Re-plan", 112, 32, "primary", Skin.Font("Primary", "semibold", 14))
     refresh:SetPoint("TOPRIGHT", -12, -77)
     refresh:SetScript("OnClick", function()
-        -- Use what's in the box only if you changed it; otherwise plan from your current skill.
-        local plan = state.prof and live[state.prof]
-        local typed = tonumber(startBox:GetText())
-        state.start = (typed and not (plan and typed == plan.start)) and typed or nil
+        -- Only read Start skill when the player edited the box; otherwise preserve state.start
+        -- (a custom override stays active, while nil continues tracking current skill).
+        if state.startEdited then
+            state.start = tonumber(startBox:GetText())
+            state.startEdited = false
+        end
         setTarget(state.prof, tonumber(targetBox:GetText()))
         UI.Replan()
     end)
@@ -1078,7 +1085,10 @@ function UI.Refresh()
     end
     local plan = savedPlan(state.prof)
     if not plan then return UI.Replan() end
-    startBox:SetText(tostring(plan.start))
+    if not startBox:HasFocus() then
+        startBox:SetText(tostring(plan.start))
+        state.startEdited = false
+    end
     targetBox:SetText(tostring(plan.target))
     local lines = render(plan)
     local head = {}
@@ -1107,6 +1117,7 @@ function UI.Replan()
     end
     local target = getTarget(state.prof)
     startBox:SetText(tostring(start))
+    state.startEdited = false
     targetBox:SetText(tostring(target))
     if start >= target then
         setLines({ { text = ("Start skill %d is already at or above the target %d."):format(start, target) } })
@@ -1150,7 +1161,10 @@ UI.RefreshSoon = ns.Debounce(0.5, function() UI.Refresh() end)
 function UI.Show(prof, start, target)
     if not frame then build() end
     if prof then state.prof = prof end
-    state.start = start
+    if prof or start ~= nil then
+        state.start = start
+        state.startEdited = false
+    end
     if prof and target then setTarget(prof, target) end
     frame:Show()
     if start or target then UI.Replan() else UI.Refresh() end
