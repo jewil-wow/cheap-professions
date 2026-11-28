@@ -166,6 +166,12 @@ ns.On("ADDON_LOADED", function(name)
     migrateRecipeKeys(ns.db.yields)
     migrateRecipeKeys(ns.cdb.known)
     migrateRecipeKeys(ns.cdb.planned)
+    for prof, known in pairs(ns.cdb.known) do
+        local planned = ns.cdb.planned[prof]
+        if type(known) == "table" and type(planned) == "table" then
+            for key in pairs(known) do planned[key] = nil end
+        end
+    end
 
     if not ns.db.ahSellSeeded then
         -- Items known to sell on the AH during levelling. Add more with /cp ahsell add <item>.

@@ -92,17 +92,21 @@ local function render(plan)
     local t = plan.totals
     local base = plan.baseline or plan
     local planned = ns.Planned(plan.prof)
+    local known = ns.cdb.known[plan.prof] or {}
 
     -- Recipes to look for: from the plan without your picks, plus anything you picked.
     local lookFor, listed = {}, {}
-    for i = 1, math.min(MAX_LOOK_FOR, #base.missed) do
-        local m = base.missed[i]
-        lookFor[#lookFor + 1] = m
-        listed[ns.RecipeKey(m.rec)] = true
+    for _, m in ipairs(base.missed) do
+        if #lookFor >= MAX_LOOK_FOR then break end
+        local key = ns.RecipeKey(m.rec)
+        if not known[key] then
+            lookFor[#lookFor + 1] = m
+            listed[key] = true
+        end
     end
     for _, rec in ipairs(ns.Data.recipes[plan.prof]) do
         local key = ns.RecipeKey(rec)
-        if planned[key] and not listed[key] then
+        if planned[key] and not known[key] and not listed[key] then
             listed[key] = true
             local gain
             for _, m in ipairs(base.missed) do if m.rec == rec then gain = m.gain end end
@@ -958,8 +962,16 @@ function UI.Compute(prof, start, target)
     local base, err = ns.Planner.Build(prof, start, target, nil)
     if not base then return nil, err end
     local planned = ns.Planned(prof)
-    if next(planned) == nil then return base end
-    local plan = ns.Planner.Build(prof, start, target, planned)
+    local known = ns.cdb.known[prof] or {}
+    local active
+    for key in pairs(planned) do
+        if not known[key] then
+            active = active or {}
+            active[key] = true
+        end
+    end
+    if not active then return base end
+    local plan = ns.Planner.Build(prof, start, target, active)
     plan.baseline = base
     return plan
 end

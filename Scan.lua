@@ -88,6 +88,10 @@ function Scan.TradeSkill()
     -- Only overwrite when the list actually loaded (it can be empty on the first event).
     if matched > 0 then
         ns.cdb.known[prof] = known
+        local planned = ns.cdb.planned and ns.cdb.planned[prof]
+        if planned then
+            for key in pairs(known) do planned[key] = nil end
+        end
         if ns.UI then ns.UI.MarkStale(prof, "Your known recipes were updated.") end
     end
 end

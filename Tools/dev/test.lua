@@ -1269,6 +1269,144 @@ test("issue #5: priced required tool remains allowed for leveling; owned tool re
     end
 end)
 
+-- Issue #6: learned optional recipes clear from planned and disappear from Step 2.
+local function step2Checks(lines)
+    local out = {}
+    for _, l in ipairs(lines) do
+        if l.check then out[#out + 1] = stripColor(l.text or "") end
+    end
+    return out
+end
+
+test("issue #6: Scan.TradeSkill clears learned recipes from planned while preserving unlearned ones", function()
+    local agility = assert(findRecipe("alchemy", "Elixir of Minor Agility"))
+    local swift = assert(findRecipe("alchemy", "Swiftness Potion"))
+    local bag = assert(findRecipe("tailoring", "Linen Bag"))
+    local keyAgility = ns.RecipeKey(agility)
+    local keySwift = ns.RecipeKey(swift)
+    local keyBag = ns.RecipeKey(bag)
+
+    ns.Planned("alchemy")[keyAgility] = true
+    ns.Planned("alchemy")[keySwift] = true
+    ns.Planned("tailoring")[keyBag] = true
+
+    -- Linked window must not clear planned
+    mockTradeSkill = {
+        prof = "Alchemy",
+        linked = true,
+        recipes = {
+            [agility.sp] = { name = agility.n, item = agility.i, learned = true },
+        },
+    }
+    ns.Scan.TradeSkill()
+    eq(ns.cdb.planned.alchemy[keyAgility], true, "linked tradeskill window does not clear planned")
+
+    -- Own tradeskill scan clears learned recipe from planned, keeps unlearned and other professions
+    mockTradeSkill = {
+        prof = "Alchemy",
+        linked = false,
+        recipes = {
+            [agility.sp] = { name = agility.n, item = agility.i, learned = true },
+            [swift.sp] = { name = swift.n, item = swift.i, learned = false },
+        },
+    }
+    ns.Scan.TradeSkill()
+    eq(ns.cdb.known.alchemy[keyAgility], true, "Elixir of Minor Agility marked known")
+    eq(ns.cdb.planned.alchemy[keyAgility], nil, "learned recipe cleared from planned")
+    eq(ns.cdb.planned.alchemy[keySwift], true, "unlearned planned recipe preserved")
+    eq(ns.cdb.planned.tailoring[keyBag], true, "other profession planned recipe untouched")
+end)
+
+test("issue #6: learned optional recipe disappears from Step 2 without red warning", function()
+    local items, books = allKnownItems()
+    for id in pairs(items) do
+        if not books[id] then setAH(id, 5000, 500) end
+    end
+    local agility = assert(findRecipe("alchemy", "Elixir of Minor Agility"))
+    local keyAgility = ns.RecipeKey(agility)
+    mockItemName[agility.book] = "Recipe: Elixir of Minor Agility"
+    -- Make Elixir of Minor Agility's reagents dirt cheap so it's a top Step 2 optional recipe
+    setAH(2452, 10, 500) -- Swiftthistle
+    setAH(765, 10, 500)  -- Silverleaf
+
+    -- Before learning: unticked recipe appears in Step 2; ticking it uses it in the plan
+    local planUnticked = assert(ns.UI.Compute("alchemy", 50, 80))
+    local sawBefore = false
+    for _, txt in ipairs(step2Checks(ns.UI.Render(planUnticked))) do
+        if txt:find("Recipe: Elixir of Minor Agility", 1, true) then sawBefore = true end
+    end
+    ok(sawBefore, "unlearned optional recipe appears in Step 2")
+
+    ns.Planned("alchemy")[keyAgility] = true
+    local planTicked = assert(ns.UI.Compute("alchemy", 50, 80))
+    ok(planTicked.baseline, "baseline attached while optional recipe is ticked")
+    local sawTicked, sawTickedErr = false, false
+    for _, txt in ipairs(step2Checks(ns.UI.Render(planTicked))) do
+        if txt:find("Recipe: Elixir of Minor Agility", 1, true) then
+            sawTicked = true
+            if txt:find("not used by the plan", 1, true) then sawTickedErr = true end
+        end
+    end
+    ok(sawTicked, "ticked optional recipe appears in Step 2")
+    eq(sawTickedErr, false, "used ticked recipe has no red warning")
+
+    -- (a) Learn via Scan.TradeSkill: disappears from Step 2 immediately on old plan AND after Re-plan
+    mockTradeSkill = {
+        prof = "Alchemy",
+        linked = false,
+        recipes = {
+            [agility.sp] = { name = agility.n, item = agility.i, learned = true },
+        },
+    }
+    ns.Scan.TradeSkill()
+    for _, txt in ipairs(step2Checks(ns.UI.Render(planTicked))) do
+        ok(not txt:find("Recipe: Elixir of Minor Agility", 1, true),
+            "learned recipe disappears from Step 2 even on stale pre-replan view: " .. txt)
+    end
+
+    local planAfter = assert(ns.UI.Compute("alchemy", 50, 80))
+    eq(planAfter.baseline, nil, "no baseline once the only planned recipe is cleared")
+    for _, txt in ipairs(step2Checks(ns.UI.Render(planAfter))) do
+        ok(not txt:find("Recipe: Elixir of Minor Agility", 1, true),
+            "learned recipe does not appear in Step 2 after replan: " .. txt)
+        ok(not txt:find("not used by the plan", 1, true),
+            "no red warning in Step 2 after replan: " .. txt)
+    end
+    local usedInSteps = false
+    for _, st in ipairs(planAfter.steps) do
+        if st.rec == agility then usedInSteps = true end
+    end
+    ok(usedInSteps, "learned recipe is still used in the leveling plan")
+
+    -- (b) Defensive: if both known and planned contain the key (e.g. direct state / pre-fix DB),
+    -- UI.Render still omits it from Step 2 and UI.Compute skips redundant baseline.
+    ns.Planned("alchemy")[keyAgility] = true
+    local planBoth = assert(ns.UI.Compute("alchemy", 50, 80))
+    eq(planBoth.baseline, nil, "known-only planned recipe does not trigger a redundant baseline")
+    for _, txt in ipairs(step2Checks(ns.UI.Render(planBoth))) do
+        ok(not txt:find("Recipe: Elixir of Minor Agility", 1, true),
+            "known recipe filtered out of Step 2 even if still in planned: " .. txt)
+        ok(not txt:find("not used by the plan", 1, true),
+            "no red warning when known recipe is still in planned: " .. txt)
+    end
+end)
+
+test("issue #6: ADDON_LOADED prunes already-known recipes from planned", function()
+    local agility = assert(findRecipe("alchemy", "Elixir of Minor Agility"))
+    local swift = assert(findRecipe("alchemy", "Swiftness Potion"))
+    local keyAgility = ns.RecipeKey(agility)
+    local keySwift = ns.RecipeKey(swift)
+
+    jewilUI_ProfessionLevelerCharDB = {
+        known = { alchemy = { [keyAgility] = true } },
+        planned = { alchemy = { [keyAgility] = true, [keySwift] = true } },
+    }
+    onEvent(frames[1], "ADDON_LOADED", "jewilUI_ProfessionLeveler")
+
+    eq(ns.cdb.planned.alchemy[keyAgility], nil, "already-known recipe pruned from planned on load")
+    eq(ns.cdb.planned.alchemy[keySwift], true, "unlearned planned recipe kept on load")
+end)
+
 -- Summary ------------------------------------------------------------------
 local elapsed = os.clock() * 1000
 realPrint(("\n%d passed, %d failed%s (%.0f ms)"):format(

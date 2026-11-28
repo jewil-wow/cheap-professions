@@ -38,7 +38,7 @@ Pick one item at a time on a fresh branch, add a failing test to `Tools/dev/test
   - Also `ctx.allowed[rec] = true` is set even when `ctx.acq[rec]` is `nil` (`unpriced`), making an unobtainable tool recipe eligible for regular leveling steps.
   - **Done when:** Unit test for an unowned required tool past its grey skill includes its recipe in `acquire`/`totals.recipes` and never uses unpriced tool recipes for non-tool leveling steps.
 
-- [ ] **#6 Learned optional recipes stay stuck in Step 2 with a red error** (`UI.lua`, `Scan.lua`)
+- [x] **#6 Learned optional recipes stay stuck in Step 2 with a red error** (`UI.lua`, `Scan.lua`)
   - Once you learn a recipe you ticked in Step 2 (`cdb.planned[prof][key] = true`), `Planner.Acquisition` returns `"known"` before `"planned"`, so Step 2 still displays the ticked recipe with a red **`- not used by the plan`** warning.
   - Clear `cdb.planned[prof][key]` when `Scan.TradeSkill` sees it as known (and filter `known[key]` out of Step 2 in `UI.Render`).
   - **Done when:** Unit test shows a previously planned recipe disappears from Step 2 once marked known.
